@@ -21,7 +21,7 @@ A proprietary Telegram Serverless bot for looking up Telegram IDs from informati
 - Standard Unicode emoji do not have Telegram custom emoji IDs.
 
 ## Name and username history
-The bot records the names and usernames it actually observes when a user, group, supergroup, or channel is looked up/shared/forwarded. Each result can show **Old Names** and **Old Usernames** inline buttons; pressing a button displays up to ten previous distinct values, newest first. History starts when the bot first observes an entity — Telegram does not provide historical profile names/usernames, so earlier changes cannot be backfilled. Current values are excluded from the old-value list.
+The bot records the names and usernames it actually observes when a user, group, supergroup, or channel is looked up/shared/forwarded. Each result can show **Old Names** and **Old Usernames** inline buttons; pressing a button displays up to ten previous distinct values, newest first. History starts when the bot first observes an entity — Telegram does not provide historical profile names/usernames, so earlier changes cannot be backfilled. Current values are excluded from the old-value list. Only this bot's own observations are stored and displayed; no third-party history provider is queried or imported. External history integration is deferred until SangMata publishes its official API and its usage permission is confirmed.
 
 ## Telegram API limitations
 The Bot API does not provide a general username-to-ID resolver for arbitrary personal accounts or arbitrary bots. A typed username can resolve public supergroups/channels with `getChat`, but not arbitrary users or bots. Use the Telegram share picker or a message that exposes the sender.
