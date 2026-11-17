@@ -245,8 +245,9 @@ async function lookupChat(chatId, username) {
       username: chat.username,
       id: chat.id
     });
-  } catch {
-    await reply(chatId, '❌ Username could not be resolved. Direct lookup supports public groups, supergroups, and channels only. Telegram Bot API cannot look up arbitrary personal users or bots by username. Use Share user / Share bot in a private chat, or forward a message with a visible sender.');
+  } catch (error) {
+    console.warn('Public username lookup failed', username, error);
+    await reply(chatId, '❌ Could not resolve ' + username + '. Check that it is a public supergroup/channel username or public t.me link. Telegram Bot API cannot resolve a personal user or bot from a typed username; select them with Share user / Share bot instead. If this is a public group/channel, its exact username and the server log will help diagnose the failure.');
   }
 }
 
