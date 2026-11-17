@@ -43,6 +43,10 @@ async function reply(chatId, text, extra = {}) {
   return api.sendMessage({ chat_id: chatId, text, ...extra });
 }
 
+function privatePicker(message) {
+  return message.chat.type === 'private' ? { reply_markup: picker() } : {};
+}
+
 async function result(chatId, data) {
   const lines = [
     '🔎 <b>Telegram ID Information</b>',
@@ -79,7 +83,7 @@ async function sharedUsers(message) {
   if (!Array.isArray(users) || users.length === 0) return false;
   for (const user of users) {
     await result(message.chat.id, {
-      kind: 'User / Bot',
+      kind: shared.request_id === 8102 ? 'Bot' : 'User',
       name: [user.first_name, user.last_name].filter(Boolean).join(' ') || 'Shared account',
       username: user.username,
       id: user.user_id
@@ -135,7 +139,7 @@ export default async function (message) {
 
   const text = String(message.text ?? '').trim();
   if (text === '/start' || text.startsWith('/start@') || text === '/help' || text.startsWith('/help@')) {
-    await reply(message.chat.id, HELP, { reply_markup: picker() });
+    await reply(message.chat.id, HELP, privatePicker(message));
     return;
   }
 
