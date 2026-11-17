@@ -14,7 +14,7 @@ function formatDate(timestamp) {
 
 export default async function (query) {
   if (!query?.id) return;
-  const match = String(query.data ?? '').match(/^history:([uc]):(-?\d+):([nu])$/);
+  const match = String(query.data ?? '').match(/^history:([uc]):(-?\\d+):([nu])$/);
   if (!match) {
     await api.answerCallbackQuery({ callback_query_id: query.id, text: 'This button is invalid or expired.', show_alert: true });
     return;
@@ -40,7 +40,11 @@ export default async function (query) {
       .all();
 
     const current = rows[0]?.value;
-    const oldValues = rows.filter(row => row.value !== current).slice(0, 10);
+    // Empty username observations mark that a username was removed; they are
+    // state markers, not historical usernames to display.
+    const oldValues = rows
+      .filter(row => row.value !== current && (field !== 'username' || row.value))
+      .slice(0, 10);
 
     if (!oldValues.length) {
       await api.answerCallbackQuery({ callback_query_id: query.id, text: 'No previous values have been recorded yet.' });
@@ -52,7 +56,7 @@ export default async function (query) {
       '',
       '<b>Telegram ID:</b> <code>' + esc(entityId) + '</code>',
       '',
-      ...oldValues.map((row, index) => (index + 1) + '. ' + esc(field === 'username' ? '@' + row.value.replace(/^@/, '') : row.value) + '\n   <i>Last observed: ' + esc(formatDate(row.observedAt)) + '</i>'),
+      ...oldValues.map((row, index) => (index + 1) + '. ' + esc(field === 'username' ? '@' + row.value.replace(/^@/, '') : row.value) + '\\n   <i>Last observed: ' + esc(formatDate(row.observedAt)) + '</i>'),
       '',
       '<i>History is recorded by this bot from the first time it sees a value. It cannot retrieve names or usernames from before tracking began.</i>'
     ];
@@ -60,7 +64,7 @@ export default async function (query) {
     if (query.message?.chat?.id) {
       await api.sendMessage({
         chat_id: query.message.chat.id,
-        text: lines.join('\n'),
+        text: lines.join('\\n'),
         parse_mode: 'HTML',
         reply_to_message_id: query.message.message_id,
         allow_sending_without_reply: true
