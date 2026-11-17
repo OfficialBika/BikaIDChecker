@@ -38,7 +38,8 @@ Optional:
 ```sh
 python -m venv .venv
 . .venv/bin/activate
-pip install -r resolver/requirements.txt
+pip install -r resolver/requirements-dev.txt
+python resolver/generate_session.py  # run locally; keep output secret
 uvicorn resolver.app:app --host 127.0.0.1 --port 8000
 pytest -q resolver/test_resolver.py
 ```
