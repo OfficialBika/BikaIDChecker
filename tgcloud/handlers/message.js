@@ -2,7 +2,7 @@ import { api } from 'sdk';
 import { db } from 'sdk/db';
 import { and, desc, eq } from 'sdk/db';
 import { entityHistory } from '../schema.js';
-import { CREATION_DATE_SAMPLES } from '../data/creation-date-samples.js';
+import { CREATION_DATE_SAMPLES } from '../lib/creation-date-samples.js';
 
 const HELP = [
   '🔎 BikaIDChecker',
