@@ -5,7 +5,7 @@ A proprietary Telegram Serverless bot for looking up Telegram IDs from informati
 ## Runtime
 - Telegram Serverless official JavaScript runtime
 - Built-in `sdk` module; no runtime npm dependencies
-- No VPS, Render, or third-party webhook host
+- Optional Render-hosted MTProto resolver for public username lookups (separate service; configured independently)
 - Built-in SQLite database stores up to ten previous distinct names and usernames per observed user/chat, separately
 
 ## Lookup methods
@@ -22,6 +22,14 @@ A proprietary Telegram Serverless bot for looking up Telegram IDs from informati
 
 ## Name and username history
 The bot records the names and usernames it actually observes when a user, group, supergroup, or channel is looked up/shared/forwarded. Each result can show **Old Names** and **Old Usernames** inline buttons; pressing a button displays up to ten previous distinct values, newest first. History starts when the bot first observes an entity — Telegram does not provide historical profile names/usernames, so earlier changes cannot be backfilled. Current values are excluded from the old-value list. Only this bot's own observations are stored and displayed; no third-party history provider is queried or imported. External history integration is deferred until SangMata publishes its official API and its usage permission is confirmed.
+
+## MTProto resolver
+
+The separate `resolver/` service is deployed on Render in Singapore. It uses Telethon with a dedicated Telegram account session to resolve public usernames that the Bot API cannot resolve. The Serverless bot remains the primary bot runtime; the resolver is an outbound lookup service, not a replacement webhook host.
+
+Before the bot can call it, configure the resolver's Render environment variables using [resolver/README.md](resolver/README.md), then complete the bot-side secure resolver configuration and handler integration. Do not commit or share the MTProto StringSession, API hash, or resolver API key.
+
+Render's free service may sleep while idle. Its local filesystem is ephemeral, so its peer cache may be cleared on restart. Username lookup remains possible; numeric ID lookup is only possible when the MTProto session has previously encountered that peer and retained its access hash. A numeric ID is not a global Telegram profile search key.
 
 ## Telegram API limitations
 The Bot API does not provide a general username-to-ID resolver for arbitrary personal accounts or arbitrary bots. A typed username can resolve public supergroups/channels with `getChat`, but not arbitrary users or bots. Use the Telegram share picker or a message that exposes the sender.
