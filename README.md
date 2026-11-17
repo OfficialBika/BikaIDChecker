@@ -14,10 +14,10 @@ A proprietary Telegram Serverless bot for looking up Telegram IDs from informati
 3. Use the share-chat picker to share a group or channel ID.
 4. Forward a message when Telegram includes a visible forward origin. Hidden-user forwards do not expose the original ID.
 
-## Telegram API limitations
+## Additional tools\n- Account Created Date: approximate User ID-based estimate for private user accounts only. It is not an official Telegram timestamp.\n- Emoji to ID: send a Telegram Premium custom emoji to read its `custom_emoji_id`.\n- ID to Emoji: use `/idemoji <custom_emoji_id>` to retrieve the associated emoji and sticker-set name when available.\n- Standard Unicode emoji do not have Telegram custom emoji IDs.\n\n## Telegram API limitations
 The Bot API does not provide a general username-to-ID resolver for arbitrary personal accounts or arbitrary bots. A typed username can resolve public supergroups/channels with `getChat`, but not arbitrary users or bots. Use the Telegram share picker or a message that exposes the sender.
 
-Telegram does not expose account registration/creation timestamps in the Bot API. The bot reports this as unavailable and does not fabricate a date from an ID number.
+Telegram does not expose account registration/creation timestamps in the Bot API. For private user accounts, the bot now estimates an approximate date by interpolating public User ID reference samples. The result is explicitly marked as an estimate, may be inaccurate, and is unavailable outside the sample range. Bots, groups, and channels are not assigned an account creation estimate.
 
 Private chats/groups/channels can only be inspected when Telegram provides access and the user shares the chat or forwards an eligible message. An invite link alone does not reveal a numeric ID.
 
