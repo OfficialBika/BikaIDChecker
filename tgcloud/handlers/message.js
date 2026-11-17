@@ -22,7 +22,7 @@ const HELP = [
   'Standard Unicode emoji do not have Telegram custom emoji IDs.',
   '',
   '/start or /help — show this help',
-  '/menu — open the share menu'
+  'Use the keyboard icon beside the message field to show or hide the share menu.'
 ].join('\n');
 
 function esc(value) {
@@ -58,8 +58,7 @@ function picker() {
       [{ text: '👤 Share user', request_users: { request_id: 8101, user_is_bot: false, max_quantity: 1, request_name: true, request_username: true } }],
       [{ text: '🤖 Share bot', request_users: { request_id: 8102, user_is_bot: true, max_quantity: 1, request_name: true, request_username: true } }],
       [{ text: '👥 Share group', request_chat: { request_id: 8103, chat_is_channel: false, request_title: true, request_username: true } }],
-      [{ text: '📢 Share channel', request_chat: { request_id: 8104, chat_is_channel: true, request_title: true, request_username: true } }],
-      [{ text: '❌ Close Menu' }]
+      [{ text: '📢 Share channel', request_chat: { request_id: 8104, chat_is_channel: true, request_title: true, request_username: true } }]
     ],
     resize_keyboard: true,
     one_time_keyboard: false,
@@ -363,7 +362,6 @@ export default async function (message) {
         commands: [
           { command: 'start', description: 'Start the bot' },
           { command: 'help', description: 'Show help' },
-          { command: 'menu', description: 'Open the share menu' },
           { command: 'emojiid', description: 'Get a custom emoji ID' },
           { command: 'idemoji', description: 'Find a custom emoji by ID' }
         ]
@@ -371,25 +369,9 @@ export default async function (message) {
     } catch (error) {
       console.warn('Could not update bot commands', error);
     }
-    await reply(message.chat.id, HELP);
-    return;
-  }
-
-  if (text === '/menu' || text.startsWith('/menu@')) {
-    if (message.chat.type !== 'private') {
-      await reply(message.chat.id, 'ℹ️ Open a private chat with the bot to use the share menu.');
-      return;
-    }
-    await reply(message.chat.id, 'Choose what you want to share. Tap ❌ Close Menu when finished.', {
-      reply_markup: picker()
-    });
-    return;
-  }
-
-  if (text === '❌ Close Menu') {
-    await reply(message.chat.id, 'Menu closed.', {
-      reply_markup: { remove_keyboard: true }
-    });
+    await reply(message.chat.id, HELP, message.chat.type === 'private'
+      ? { reply_markup: picker() }
+      : {});
     return;
   }
 
@@ -415,5 +397,5 @@ export default async function (message) {
     return;
   }
 
-  await reply(message.chat.id, 'Send a public group/channel username, @username, t.me link, or Telegram resolve link. Bot API cannot look up arbitrary personal users or bots by username; use Share user / Share bot in a private chat or forward a message with a visible sender. For custom emoji, send a Premium custom emoji or use /idemoji <id>.');
+  await reply(message.chat.id, 'Send a public group/channel username, @username, t.me link, or Telegram resolve link. Telegram Bot API can resolve public supergroups/channels by username, but not arbitrary personal users or bots; use the share keyboard to select them. For custom emoji, send a Premium custom emoji or use /idemoji <id>.');
 }
