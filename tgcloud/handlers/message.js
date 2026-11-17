@@ -18,7 +18,7 @@ const HELP = [
   'Standard Unicode emoji do not have Telegram custom emoji IDs.',
   '',
   '/start or /help — show this help'
-].join('\\n');
+].join('\n');
 
 function esc(value) {
   return String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
@@ -26,7 +26,7 @@ function esc(value) {
 
 function parsePublicUsername(input) {
   const value = String(input ?? '').trim();
-  const link = value.match(/^(?:https?:\\/\\/)?(?:www\\.)?t\\.me\\/([A-Za-z0-9_]{5,})(?:[/?#].*)?$/i);
+  const link = value.match(/^(?:https?:\/\/)?(?:www\.)?t\.me\/([A-Za-z0-9_]{5,})(?:[/?#].*)?$/i);
   if (link) return '@' + link[1];
   if (/^@[A-Za-z0-9_]{5,}$/.test(value)) return value;
   return null;
@@ -130,7 +130,7 @@ async function result(chatId, data) {
       : null
   ].filter(Boolean);
 
-  return reply(chatId, lines.join('\\n'), {
+  return reply(chatId, lines.join('\n'), {
     parse_mode: 'HTML',
     reply_markup: { inline_keyboard: [[{ text: '📋 Copy ID', copy_text: { text: String(data.id) } }]] }
   });
@@ -212,14 +212,14 @@ async function emojiToId(message) {
   const sourceText = String(message.text ?? message.caption ?? '');
   const lines = customEntities.map(entity => {
     const emoji = sourceText.slice(entity.offset, entity.offset + entity.length);
-    return '<b>Emoji:</b> ' + esc(emoji || 'Custom emoji') + '\\n<b>Custom Emoji ID:</b> <code>' + esc(entity.custom_emoji_id) + '</code>';
+    return '<b>Emoji:</b> ' + esc(emoji || 'Custom emoji') + '\n<b>Custom Emoji ID:</b> <code>' + esc(entity.custom_emoji_id) + '</code>';
   });
-  await reply(message.chat.id, '✨ <b>Emoji to ID</b>\\n\\n' + lines.join('\\n\\n'), { parse_mode: 'HTML' });
+  await reply(message.chat.id, '✨ <b>Emoji to ID</b>\n\n' + lines.join('\n\n'), { parse_mode: 'HTML' });
   return true;
 }
 
 async function idToEmoji(chatId, customEmojiId) {
-  if (!/^\\d{8,25}$/.test(customEmojiId)) {
+  if (!/^\d{8,25}$/.test(customEmojiId)) {
     await reply(chatId, '❌ Please provide a valid numeric custom emoji ID. Example: /idemoji 5368324170671202286');
     return;
   }
@@ -242,7 +242,7 @@ async function idToEmoji(chatId, customEmojiId) {
       '<b>Custom Emoji ID:</b> <code>' + esc(customEmojiId) + '</code>',
       sticker.set_name ? '<b>Sticker set:</b> ' + esc(sticker.set_name) : null
     ].filter(Boolean);
-    await reply(chatId, lines.join('\\n'), { parse_mode: 'HTML' });
+    await reply(chatId, lines.join('\n'), { parse_mode: 'HTML' });
   } catch {
     await reply(chatId, '❌ Could not resolve this custom emoji ID. It may be invalid, deleted, or unavailable to the Bot API.');
   }
@@ -267,7 +267,7 @@ export default async function (message) {
     return;
   }
 
-  const idMatch = text.match(/^\\/idemoji(?:@\\w+)?\\s+(\\d{8,25})$/i);
+  const idMatch = text.match(/^\/idemoji(?:@\w+)?\s+(\d{8,25})$/i);
   if (idMatch) {
     await idToEmoji(message.chat.id, idMatch[1]);
     return;
