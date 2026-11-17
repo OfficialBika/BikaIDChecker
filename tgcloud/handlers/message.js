@@ -68,6 +68,12 @@ async function lookupChat(chatId, username) {
   try {
     const chat = await api.getChat({ chat_id: username });
     const kind = chat.type === 'channel' ? 'Channel' : chat.type === 'supergroup' ? 'Supergroup' : chat.type === 'group' ? 'Group' : 'Chat';
+    await result(chatId, {
+      kind,
+      name: chat.title || [chat.first_name, chat.last_name].filter(Boolean).join(' '),
+      username: chat.username,
+      id: chat.id
+    });
   } catch {
     await reply(chatId, '❌ Username could not be resolved. Bot API getChat resolves public groups/supergroups/channels, not arbitrary personal users or bots. Use the share buttons in a private chat or forward a message with a visible sender.');
   }
