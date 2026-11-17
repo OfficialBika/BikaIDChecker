@@ -128,17 +128,20 @@ async function recordHistory(data) {
   ].filter(item => item.field === 'username' || item.value);
 
   for (const item of values) {
-    const existing = await db.select({ id: entityHistory.id })
+    const whereEntityField = and(
+      eq(entityHistory.entityType, entityType),
+      eq(entityHistory.entityId, entityId),
+      eq(entityHistory.field, item.field)
+    );
+    const latest = await db.select({ value: entityHistory.value })
       .from(entityHistory)
-      .where(and(
-        eq(entityHistory.entityType, entityType),
-        eq(entityHistory.entityId, entityId),
-        eq(entityHistory.field, item.field),
-        eq(entityHistory.value, item.value)
-      ))
+      .where(whereEntityField)
+      .orderBy(desc(entityHistory.observedAt), desc(entityHistory.id))
+      .limit(1)
       .get();
 
-    if (!existing) {
+    // Record a new event only when the observed value changes from the latest value.
+    if (!latest || latest.value !== item.value) {
       await db.insert(entityHistory).values({
         entityType,
         entityId,
@@ -148,27 +151,20 @@ async function recordHistory(data) {
       }).run();
     }
 
-    // Keep the current value plus at most ten previous distinct values per field.
-    const rows = await db.select({ id: entityHistory.id })
+    // Retain the latest occurrence of the current value plus ten previous distinct values.
+    const allRows = await db.select({ id: entityHistory.id, value: entityHistory.value })
       .from(entityHistory)
-      .where(and(
-        eq(entityHistory.entityType, entityType),
-        eq(entityHistory.entityId, entityId),
-        eq(entityHistory.field, item.field)
-      ))
+      .where(whereEntityField)
       .orderBy(desc(entityHistory.observedAt), desc(entityHistory.id))
-      .limit(11)
       .all();
 
-    const keep = new Set(rows.map(row => row.id));
-    const allRows = await db.select({ id: entityHistory.id })
-      .from(entityHistory)
-      .where(and(
-        eq(entityHistory.entityType, entityType),
-        eq(entityHistory.entityId, entityId),
-        eq(entityHistory.field, item.field)
-      ))
-      .all();
+    const seen = new Set();
+    const keep = new Set();
+    for (const row of allRows) {
+      if (seen.has(row.value)) continue;
+      seen.add(row.value);
+      if (seen.size <= 11) keep.add(row.id);
+    }
 
     for (const row of allRows) {
       if (!keep.has(row.id)) {
