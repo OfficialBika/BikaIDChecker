@@ -52,7 +52,7 @@ export default async function (query) {
       '',
       '<b>Telegram ID:</b> <code>' + esc(entityId) + '</code>',
       '',
-      ...oldValues.map((row, index) => (index + 1) + '. ' + esc(field === 'username' ? '@' + row.value.replace(/^@/, '') : row.value) + '\n   <i>First observed: ' + esc(formatDate(row.observedAt)) + '</i>'),
+      ...oldValues.map((row, index) => (index + 1) + '. ' + esc(field === 'username' ? '@' + row.value.replace(/^@/, '') : row.value) + '\n   <i>Last observed: ' + esc(formatDate(row.observedAt)) + '</i>'),
       '',
       '<i>History is recorded by this bot from the first time it sees a value. It cannot retrieve names or usernames from before tracking began.</i>'
     ];
