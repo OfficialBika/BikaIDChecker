@@ -57,7 +57,6 @@ export default async function (query) {
       '<i>History is recorded by this bot from the first time it sees a value. It cannot retrieve names or usernames from before tracking began.</i>'
     ];
 
-    await api.answerCallbackQuery({ callback_query_id: query.id });
     if (query.message?.chat?.id) {
       await api.sendMessage({
         chat_id: query.message.chat.id,
@@ -67,6 +66,7 @@ export default async function (query) {
         allow_sending_without_reply: true
       });
     }
+    await api.answerCallbackQuery({ callback_query_id: query.id });
   } catch (error) {
     console.error('history lookup failed', error);
     await api.answerCallbackQuery({ callback_query_id: query.id, text: 'Could not load history. Please try again.', show_alert: true });
