@@ -10,6 +10,7 @@ const HELP = [
   '• Send a public group/channel @username or t.me link.',
   '• Use the share buttons to get a user, bot, group, or channel ID.',
   '• Forward a message to inspect its visible sender/origin.',
+  '• Old Names / Old Usernames buttons show up to ten previous values recorded by this bot.',
   '',
   '🗓 Account Created Date',
   'User accounts show an approximate date estimated from public ID samples. It is not an official Telegram date.',
@@ -124,7 +125,7 @@ async function recordHistory(data) {
   const values = [
     { field: 'name', value: String(data.name ?? '').trim() },
     { field: 'username', value: String(data.username ?? '').trim().replace(/^@/, '') }
-  ].filter(item => item.value);
+  ].filter(item => item.field === 'username' || item.value);
 
   for (const item of values) {
     const existing = await db.select({ id: entityHistory.id })
