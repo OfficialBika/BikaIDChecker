@@ -1,0 +1,1 @@
+"""BikaIDChecker MTProto resolver service."""
