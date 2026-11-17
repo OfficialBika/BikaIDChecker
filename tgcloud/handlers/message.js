@@ -1,4 +1,5 @@
 import { api } from 'sdk';
+import { CREATION_DATE_SAMPLES } from '../data/creation-date-samples.js';
 
 const HELP = [
   '🔎 BikaIDChecker',
@@ -7,11 +8,17 @@ const HELP = [
   '• Use the share buttons to get a user, bot, group, or channel ID.',
   '• Forward a message to inspect its visible sender/origin.',
   '',
-  'Account registration dates are not exposed by Telegram Bot API.',
-  'Arbitrary user/bot usernames cannot be resolved by the Bot API.',
+  '🗓 Account Created Date',
+  'User accounts show an approximate date estimated from public ID samples. It is not an official Telegram date.',
+  '',
+  '✨ Custom Emoji tools',
+  '• Send a Telegram Premium custom emoji to get its custom_emoji_id.',
+  '• /idemoji <custom_emoji_id> — get the associated emoji from an ID.',
+  '• /emojiid — send a custom emoji to read its ID.',
+  'Standard Unicode emoji do not have Telegram custom emoji IDs.',
   '',
   '/start or /help — show this help'
-].join('\n');
+].join('\\n');
 
 function esc(value) {
   return String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
@@ -19,7 +26,7 @@ function esc(value) {
 
 function parsePublicUsername(input) {
   const value = String(input ?? '').trim();
-  const link = value.match(/^(?:https?:\/\/)?(?:www\.)?t\.me\/([A-Za-z0-9_]{5,})(?:[/?#].*)?$/i);
+  const link = value.match(/^(?:https?:\\/\\/)?(?:www\\.)?t\\.me\\/([A-Za-z0-9_]{5,})(?:[/?#].*)?$/i);
   if (link) return '@' + link[1];
   if (/^@[A-Za-z0-9_]{5,}$/.test(value)) return value;
   return null;
@@ -47,6 +54,67 @@ function privatePicker(message) {
   return message.chat.type === 'private' ? { reply_markup: picker() } : {};
 }
 
+function buildMonotonicSamples() {
+  const sorted = CREATION_DATE_SAMPLES
+    .map(({ id, date }) => ({ id: Number(id), timestamp: Date.parse(date + 'T00:00:00Z') }))
+    .filter(item => Number.isSafeInteger(item.id) && item.id >= 0 && Number.isFinite(item.timestamp))
+    .sort((a, b) => a.id - b.id);
+
+  // The public sample set contains noisy/non-monotonic observations. Pool adjacent
+  // violations so the interpolation curve never moves backwards in time.
+  const blocks = [];
+  for (const item of sorted) {
+    blocks.push({ first: item.id, last: item.id, sum: item.timestamp, count: 1 });
+    while (blocks.length > 1) {
+      const right = blocks[blocks.length - 1];
+      const left = blocks[blocks.length - 2];
+      if (left.sum / left.count <= right.sum / right.count) break;
+      blocks.splice(blocks.length - 2, 2, {
+        first: left.first,
+        last: right.last,
+        sum: left.sum + right.sum,
+        count: left.count + right.count
+      });
+    }
+  }
+
+  const anchors = [];
+  for (const block of blocks) {
+    const timestamp = block.sum / block.count;
+    anchors.push({ id: block.first, timestamp });
+    if (block.last !== block.first) anchors.push({ id: block.last, timestamp });
+  }
+  return anchors;
+}
+
+const CREATION_ANCHORS = buildMonotonicSamples();
+
+function estimateAccountCreated(userId) {
+  const id = Number(userId);
+  if (!Number.isSafeInteger(id) || id <= 0 || CREATION_ANCHORS.length < 2) return null;
+
+  const first = CREATION_ANCHORS[0];
+  const last = CREATION_ANCHORS[CREATION_ANCHORS.length - 1];
+  if (id < first.id || id > last.id) return null;
+
+  let low = 0;
+  let high = CREATION_ANCHORS.length - 1;
+  while (low <= high) {
+    const mid = (low + high) >> 1;
+    if (CREATION_ANCHORS[mid].id < id) low = mid + 1;
+    else high = mid - 1;
+  }
+
+  const upper = CREATION_ANCHORS[Math.min(low, CREATION_ANCHORS.length - 1)];
+  if (upper.id === id || low === 0) {
+    return new Date(upper.timestamp).toISOString().slice(0, 10);
+  }
+  const lower = CREATION_ANCHORS[low - 1];
+  const ratio = (id - lower.id) / (upper.id - lower.id);
+  const timestamp = lower.timestamp + ratio * (upper.timestamp - lower.timestamp);
+  return new Date(timestamp).toISOString().slice(0, 10);
+}
+
 async function result(chatId, data) {
   const lines = [
     '🔎 <b>Telegram ID Information</b>',
@@ -55,10 +123,14 @@ async function result(chatId, data) {
     '<b>Name:</b> ' + esc(data.name || 'Not provided'),
     data.username ? '<b>Username:</b> ' + esc(data.username.startsWith('@') ? data.username : '@' + data.username) : null,
     '<b>ID:</b> <code>' + esc(data.id) + '</code>',
-    '<b>Account created:</b> Not available from Telegram Bot API'
+    data.kind === 'User'
+      ? '<b>Account created:</b> ' + (estimateAccountCreated(data.id)
+        ? '≈ ' + esc(estimateAccountCreated(data.id)) + ' <i>(estimated)</i>'
+        : 'Estimate unavailable for this ID range')
+      : null
   ].filter(Boolean);
 
-  return reply(chatId, lines.join('\n'), {
+  return reply(chatId, lines.join('\\n'), {
     parse_mode: 'HTML',
     reply_markup: { inline_keyboard: [[{ text: '📋 Copy ID', copy_text: { text: String(data.id) } }]] }
   });
@@ -85,7 +157,7 @@ async function sharedUsers(message) {
   if (!Array.isArray(users) || users.length === 0) return false;
   for (const user of users) {
     await result(message.chat.id, {
-      kind: shared.request_id === 8102 ? 'Bot' : 'User',
+      kind: user.is_bot || shared.request_id === 8102 ? 'Bot' : 'User',
       name: [user.first_name, user.last_name].filter(Boolean).join(' ') || 'Shared account',
       username: user.username,
       id: user.user_id
@@ -132,16 +204,72 @@ async function forwarded(message) {
   return false;
 }
 
+async function emojiToId(message) {
+  const entities = [...(message.entities || []), ...(message.caption_entities || [])];
+  const customEntities = entities.filter(entity => entity.type === 'custom_emoji' && entity.custom_emoji_id);
+  if (customEntities.length === 0) return false;
+
+  const sourceText = String(message.text ?? message.caption ?? '');
+  const lines = customEntities.map(entity => {
+    const emoji = sourceText.slice(entity.offset, entity.offset + entity.length);
+    return '<b>Emoji:</b> ' + esc(emoji || 'Custom emoji') + '\\n<b>Custom Emoji ID:</b> <code>' + esc(entity.custom_emoji_id) + '</code>';
+  });
+  await reply(message.chat.id, '✨ <b>Emoji to ID</b>\\n\\n' + lines.join('\\n\\n'), { parse_mode: 'HTML' });
+  return true;
+}
+
+async function idToEmoji(chatId, customEmojiId) {
+  if (!/^\\d{8,25}$/.test(customEmojiId)) {
+    await reply(chatId, '❌ Please provide a valid numeric custom emoji ID. Example: /idemoji 5368324170671202286');
+    return;
+  }
+
+  try {
+    const stickers = await api.getCustomEmojiStickers({ custom_emoji_ids: [customEmojiId] });
+    const sticker = Array.isArray(stickers)
+      ? stickers.find(item => String(item.custom_emoji_id) === customEmojiId) || stickers[0]
+      : null;
+
+    if (!sticker) {
+      await reply(chatId, '❌ No custom emoji was found for that ID. It may be invalid or deleted.');
+      return;
+    }
+
+    const lines = [
+      '✨ <b>ID to Emoji</b>',
+      '',
+      '<b>Emoji:</b> ' + esc(sticker.emoji || 'No base emoji provided'),
+      '<b>Custom Emoji ID:</b> <code>' + esc(customEmojiId) + '</code>',
+      sticker.set_name ? '<b>Sticker set:</b> ' + esc(sticker.set_name) : null
+    ].filter(Boolean);
+    await reply(chatId, lines.join('\\n'), { parse_mode: 'HTML' });
+  } catch {
+    await reply(chatId, '❌ Could not resolve this custom emoji ID. It may be invalid, deleted, or unavailable to the Bot API.');
+  }
+}
+
 export default async function (message) {
   if (!message?.chat?.id) return;
 
   if (await sharedUsers(message)) return;
   if (await sharedChat(message)) return;
+  if (await emojiToId(message)) return;
   if (await forwarded(message)) return;
 
   const text = String(message.text ?? '').trim();
   if (text === '/start' || text.startsWith('/start@') || text === '/help' || text.startsWith('/help@')) {
     await reply(message.chat.id, HELP, privatePicker(message));
+    return;
+  }
+
+  if (text === '/emojiid' || text.startsWith('/emojiid@')) {
+    await reply(message.chat.id, 'Send a Telegram Premium custom emoji in your next message. I will return its custom_emoji_id. Standard emoji do not have a custom ID.');
+    return;
+  }
+
+  const idMatch = text.match(/^\\/idemoji(?:@\\w+)?\\s+(\\d{8,25})$/i);
+  if (idMatch) {
+    await idToEmoji(message.chat.id, idMatch[1]);
     return;
   }
 
@@ -156,5 +284,5 @@ export default async function (message) {
     return;
   }
 
-  await reply(message.chat.id, 'Send a public group/channel @username or t.me link. For users and bots, use the share buttons in a private chat or forward a message with a visible sender.', privatePicker(message));
+  await reply(message.chat.id, 'Send a public group/channel @username or t.me link. For users and bots, use the share buttons in a private chat or forward a message with a visible sender. For custom emoji, send a Premium custom emoji or use /idemoji <id>.', privatePicker(message));
 }
