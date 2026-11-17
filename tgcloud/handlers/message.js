@@ -1,4 +1,7 @@
 import { api } from 'sdk';
+import { db } from 'sdk/db';
+import { and, desc, eq } from 'sdk/db';
+import { entityHistory } from '../schema.js';
 import { CREATION_DATE_SAMPLES } from '../data/creation-date-samples.js';
 
 const HELP = [
@@ -115,7 +118,90 @@ function estimateAccountCreated(userId) {
   return new Date(timestamp).toISOString().slice(0, 10);
 }
 
+async function recordHistory(data) {
+  const entityType = ['User', 'Bot'].includes(data.kind) ? 'user' : 'chat';
+  const entityId = String(data.id);
+  const values = [
+    { field: 'name', value: String(data.name ?? '').trim() },
+    { field: 'username', value: String(data.username ?? '').trim().replace(/^@/, '') }
+  ].filter(item => item.value);
+
+  for (const item of values) {
+    const existing = await db.select({ id: entityHistory.id })
+      .from(entityHistory)
+      .where(and(
+        eq(entityHistory.entityType, entityType),
+        eq(entityHistory.entityId, entityId),
+        eq(entityHistory.field, item.field),
+        eq(entityHistory.value, item.value)
+      ))
+      .get();
+
+    if (!existing) {
+      await db.insert(entityHistory).values({
+        entityType,
+        entityId,
+        field: item.field,
+        value: item.value,
+        observedAt: Math.floor(Date.now() / 1000)
+      }).run();
+    }
+
+    // Keep the current value plus at most ten previous distinct values per field.
+    const rows = await db.select({ id: entityHistory.id })
+      .from(entityHistory)
+      .where(and(
+        eq(entityHistory.entityType, entityType),
+        eq(entityHistory.entityId, entityId),
+        eq(entityHistory.field, item.field)
+      ))
+      .orderBy(desc(entityHistory.observedAt), desc(entityHistory.id))
+      .limit(11)
+      .all();
+
+    const keep = new Set(rows.map(row => row.id));
+    const allRows = await db.select({ id: entityHistory.id })
+      .from(entityHistory)
+      .where(and(
+        eq(entityHistory.entityType, entityType),
+        eq(entityHistory.entityId, entityId),
+        eq(entityHistory.field, item.field)
+      ))
+      .all();
+
+    for (const row of allRows) {
+      if (!keep.has(row.id)) {
+        await db.delete(entityHistory).where(eq(entityHistory.id, row.id)).run();
+      }
+    }
+  }
+}
+
+async function historyButton(entityType, entityId, field, label) {
+  const rows = await db.select({ value: entityHistory.value })
+    .from(entityHistory)
+    .where(and(
+      eq(entityHistory.entityType, entityType),
+      eq(entityHistory.entityId, String(entityId)),
+      eq(entityHistory.field, field)
+    ))
+    .orderBy(desc(entityHistory.observedAt), desc(entityHistory.id))
+    .limit(11)
+    .all();
+  const current = rows[0]?.value;
+  const oldCount = rows.filter(row => row.value !== current).length;
+  return oldCount > 0
+    ? { text: label + ' (' + oldCount + ')', callback_data: 'history:' + (entityType === 'user' ? 'u' : 'c') + ':' + String(entityId) + ':' + (field === 'name' ? 'n' : 'u') }
+    : null;
+}
+
 async function result(chatId, data) {
+  await recordHistory(data);
+  const entityType = ['User', 'Bot'].includes(data.kind) ? 'user' : 'chat';
+  const nameButton = await historyButton(entityType, data.id, 'name', '📜 Old Names');
+  const usernameButton = await historyButton(entityType, data.id, 'username', '🔗 Old Usernames');
+  const historyButtons = [nameButton, usernameButton].filter(Boolean);
+
   const lines = [
     '🔎 <b>Telegram ID Information</b>',
     '',
@@ -130,9 +216,12 @@ async function result(chatId, data) {
       : null
   ].filter(Boolean);
 
+  const keyboard = [[{ text: '📋 Copy ID', copy_text: { text: String(data.id) } }]];
+  if (historyButtons.length) keyboard.push(historyButtons);
+
   return reply(chatId, lines.join('\n'), {
     parse_mode: 'HTML',
-    reply_markup: { inline_keyboard: [[{ text: '📋 Copy ID', copy_text: { text: String(data.id) } }]] }
+    reply_markup: { inline_keyboard: keyboard }
   });
 }
 
