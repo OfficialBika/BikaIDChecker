@@ -68,18 +68,14 @@ async function lookupChat(chatId, username) {
   try {
     const chat = await api.getChat({ chat_id: username });
     const kind = chat.type === 'channel' ? 'Channel' : chat.type === 'supergroup' ? 'Supergroup' : chat.type === 'group' ? 'Group' : 'Chat';
-    const details = chat.description ? '\n\n<b>Description:</b> ' + esc(chat.description.slice(0, 500)) : '';
-    await result(chatId, { kind, name: chat.title || [chat.first_name, chat.last_name].filter(Boolean).join(' '), username: chat.username, id: chat.id });
-    if (details) {
-      // Keep the primary result compact; description is intentionally not persisted.
-    }
   } catch {
-    await reply(chatId, '❌ Username could not be resolved. Bot API getChat resolves public groups/supergroups/channels, not arbitrary personal users or bots. Use the share buttons or forward a message with a visible sender.', { reply_markup: picker() });
+    await reply(chatId, '❌ Username could not be resolved. Bot API getChat resolves public groups/supergroups/channels, not arbitrary personal users or bots. Use the share buttons in a private chat or forward a message with a visible sender.');
   }
 }
 
 async function sharedUsers(message) {
-  const users = message.users_shared?.users;
+  const shared = message.users_shared;
+  const users = shared?.users;
   if (!Array.isArray(users) || users.length === 0) return false;
   for (const user of users) {
     await result(message.chat.id, {
@@ -154,5 +150,5 @@ export default async function (message) {
     return;
   }
 
-  await reply(message.chat.id, 'Send a public group/channel @username or t.me link. For users and bots, use the share buttons or forward a message with a visible sender.', { reply_markup: picker() });
+  await reply(message.chat.id, 'Send a public group/channel @username or t.me link. For users and bots, use the share buttons in a private chat or forward a message with a visible sender.', privatePicker(message));
 }
