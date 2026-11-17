@@ -39,7 +39,7 @@ Private chats/groups/channels can only be inspected when Telegram provides acces
    ```
 4. Test with `npx tgcloud run handlers/message '{ chat: { id: 1, type: "private" }, from: { id: 2, first_name: "Test" }, text: "/start" }'`.
 
-After deploying schema.js, run `npx tgcloud migrate` once to create the history table, then deploy with `npx tgcloud push` if any handler changes remain.
+Deploy the schema and handlers with `npx tgcloud push`, then run `npx tgcloud migrate` once to create the history table.
 
 ## License and source access
 All rights reserved. No permission is granted to use, copy, modify, redistribute, sublicense, publish, or create derivative works without prior written permission. See [LICENSE](LICENSE).
