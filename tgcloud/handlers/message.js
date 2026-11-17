@@ -186,7 +186,7 @@ async function historyButton(entityType, entityId, field, label) {
     .limit(11)
     .all();
   const current = rows[0]?.value;
-  const oldCount = rows.filter(row => row.value !== current).length;
+  const oldCount = rows.filter(row => row.value !== current && (field !== 'username' || row.value)).length;
   return oldCount > 0
     ? { text: label + ' (' + oldCount + ')', callback_data: 'history:' + (entityType === 'user' ? 'u' : 'c') + ':' + String(entityId) + ':' + (field === 'name' ? 'n' : 'u') }
     : null;
