@@ -30,9 +30,24 @@ function esc(value) {
 
 function parsePublicUsername(input) {
   const value = String(input ?? '').trim();
-  const link = value.match(/^(?:https?:\/\/)?(?:www\.)?t\.me\/([A-Za-z0-9_]{5,})(?:[/?#].*)?$/i);
-  if (link) return '@' + link[1];
-  if (/^@[A-Za-z0-9_]{5,}$/.test(value)) return value;
+  const reservedPaths = new Set([
+    'addstickers', 'addemoji', 'share', 'proxy', 'socks',
+    'login', 'confirmphone', 'iv', 'setlanguage', 'joinchat'
+  ]);
+
+  const link = value.match(/^(?:(?:https?:\/\/)?(?:www\.)?(?:t\.me|telegram\.me)\/)(?:s\/)?([A-Za-z0-9_]{5,})(?:[/?#].*)?$/i);
+  if (link && !reservedPaths.has(link[1].toLowerCase())) return '@' + link[1];
+
+  const tgResolve = value.match(/^tg:\/\/resolve\?([^#]+)$/i);
+  if (tgResolve) {
+    const domain = new URLSearchParams(tgResolve[1]).get('domain');
+    if (domain && /^[A-Za-z0-9_]{5,}$/.test(domain) && !reservedPaths.has(domain.toLowerCase())) {
+      return '@' + domain;
+    }
+  }
+
+  const username = value.match(/^@?([A-Za-z0-9_]{5,})$/);
+  if (username && !reservedPaths.has(username[1].toLowerCase())) return '@' + username[1];
   return null;
 }
 
@@ -45,7 +60,7 @@ function picker() {
       [{ text: '📢 Share channel', request_chat: { request_id: 8104, chat_is_channel: true, request_title: true, request_username: true } }]
     ],
     resize_keyboard: true,
-    is_persistent: true,
+    one_time_keyboard: true,
     input_field_placeholder: 'Send @username or choose a share button'
   };
 }
@@ -233,7 +248,7 @@ async function lookupChat(chatId, username) {
       id: chat.id
     });
   } catch {
-    await reply(chatId, '❌ Username could not be resolved. Bot API getChat resolves public groups/supergroups/channels, not arbitrary personal users or bots. Use the share buttons in a private chat or forward a message with a visible sender.');
+    await reply(chatId, '❌ Username could not be resolved. Direct lookup supports public groups, supergroups, and channels only. Telegram Bot API cannot look up arbitrary personal users or bots by username. Use Share user / Share bot in a private chat, or forward a message with a visible sender.');
   }
 }
 
@@ -370,5 +385,5 @@ export default async function (message) {
     return;
   }
 
-  await reply(message.chat.id, 'Send a public group/channel @username or t.me link. For users and bots, use the share buttons in a private chat or forward a message with a visible sender. For custom emoji, send a Premium custom emoji or use /idemoji <id>.', privatePicker(message));
+  await reply(message.chat.id, 'Send a public group/channel username, @username, t.me link, or Telegram resolve link. Bot API cannot look up arbitrary personal users or bots by username; use Share user / Share bot in a private chat or forward a message with a visible sender. For custom emoji, send a Premium custom emoji or use /idemoji <id>.');
 }
