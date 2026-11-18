@@ -50,7 +50,8 @@ function parsePublicUsername(input) {
     }
   }
 
-  const username = value.match(/^@?([A-Za-z0-9_]{5,})$/);
+  // A numeric Telegram ID must never be interpreted as a public username.
+  const username = value.match(/^@?([A-Za-z][A-Za-z0-9_]{4,})$/);
   if (username && !reservedPaths.has(username[1].toLowerCase())) return '@' + username[1];
   return null;
 }
@@ -87,14 +88,25 @@ async function saveResolverKey(apiKey) {
 async function resolverRequest(path, payload) {
   const config = await db.select({ apiKey: resolverConfig.apiKey }).from(resolverConfig).where(eq(resolverConfig.id, 1)).get();
   if (!config?.apiKey) throw new Error('Resolver is not configured. Ask the owner to run /setresolver privately.');
-  const response = await fetch(RESOLVER_BASE_URL + path, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-API-Key': config.apiKey },
-    body: JSON.stringify(payload)
-  });
+  let response;
+  try {
+    response = await fetch(RESOLVER_BASE_URL + path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-API-Key': config.apiKey },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(30000)
+    });
+  } catch (error) {
+    console.error('Resolver network request failed:', path, String(error?.message ?? error));
+    throw new Error('Cannot connect to the Render resolver. Check its URL and network availability.');
+  }
   let body = {};
   try { body = await response.json(); } catch {}
-  if (!response.ok || body.ok !== true) throw new Error(typeof body.detail === 'string' ? body.detail : 'Resolver request failed.');
+  if (!response.ok || body.ok !== true) {
+    const detail = typeof body.detail === 'string' ? body.detail : 'Resolver request failed.';
+    console.warn('Resolver returned an error:', path, response.status, detail);
+    throw new Error('Resolver HTTP ' + response.status + ': ' + detail);
+  }
   return body;
 }
 
