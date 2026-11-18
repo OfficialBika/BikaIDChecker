@@ -300,9 +300,8 @@ async function result(chatId, data) {
   await recordHistory(data);
   const sangmata = data.kind === 'User' ? await fetchSangmata(data.id) : null;
   const entityType = ['User', 'Bot'].includes(data.kind) ? 'user' : 'chat';
-  const nameButton = await historyButton(entityType, data.id, 'name', '📜 Old Names');
-  const usernameButton = await historyButton(entityType, data.id, 'username', '🔗 Old Usernames');
-  const historyButtons = [nameButton, usernameButton].filter(Boolean);
+  const nameButton = await historyButton(entityType, data.id, 'name', '📜 Name History');
+  const usernameButton = await historyButton(entityType, data.id, 'username', '🔗 Username History');
 
   const lines = [
     '🔎 <b>Telegram ID Information</b>',
@@ -318,17 +317,48 @@ async function result(chatId, data) {
       : null,
     sangmata
       ? '<b>SangMata:</b> ' + (sangmata.has_history ? 'Historical records found' : 'No historical records returned')
-      : (data.kind === 'User' ? '<b>SangMata:</b> Lookup unavailable (resolver not configured or request failed)' : null)
+      : (data.kind === 'User' ? '<b>SangMata:</b> Lookup unavailable (resolver request failed)' : null)
   ].filter(Boolean);
 
   const keyboard = [[{ text: '📋 Copy ID', copy_text: { text: String(data.id) } }]];
-  if (historyButtons.length) keyboard.push(historyButtons);
-  if (sangmata) keyboard.push([{ text: '🕘 SangMata History', callback_data: 'sangmata:' + String(data.id) }]);
+  if (sangmata) {
+    const customEmoji = { text: ' ', icon_custom_emoji_id: '5807468998840814853' };
+    keyboard.push(
+      [{ text: '🔗 Username History', callback_data: 'sangmata:username:' + String(data.id), style: 'primary' }, customEmoji],
+      [{ text: '📜 Name History', callback_data: 'sangmata:name:' + String(data.id), style: 'primary' }, customEmoji]
+    );
+  }
+  if (nameButton || usernameButton) {
+    if (usernameButton) keyboard.push([usernameButton]);
+    if (nameButton) keyboard.push([nameButton]);
+  }
 
-  return reply(chatId, lines.join('\n'), {
+  return reply(chatId, lines.join('\\n'), {
     parse_mode: 'HTML',
     reply_markup: { inline_keyboard: keyboard }
   });
+}
+
+async function sendSearching(chatId) {
+  try {
+    return await reply(chatId, '<tg-emoji emoji-id="5267415876851744059">🔎</tg-emoji> Searching for result...', { parse_mode: 'HTML' });
+  } catch (error) {
+    console.warn('Could not send searching status:', String(error?.message ?? error));
+    return null;
+  }
+}
+
+async function finishSearching(statusMessage, chatId, data) {
+  if (statusMessage?.message_id) {
+    try {
+      const finalMessage = await result(chatId, data);
+      await api.deleteMessage({ chat_id: chatId, message_id: statusMessage.message_id });
+      return finalMessage;
+    } catch (error) {
+      console.warn('Could not replace searching status:', String(error?.message ?? error));
+    }
+  }
+  return result(chatId, data);
 }
 
 async function lookupChat(chatId, username) {
@@ -346,7 +376,7 @@ async function lookupChat(chatId, username) {
     try {
       const resolved = await resolverRequest('/v1/resolve', { username });
       const profile = resolved.result;
-      await result(chatId, { kind: profile.kind, name: profile.name, username: profile.username, id: profile.id });
+      await finishSearching(statusMessage, chatId, { kind: profile.kind, name: profile.name, username: profile.username, id: profile.id });
     } catch (resolverError) {
       console.warn('MTProto username lookup failed:', String(resolverError?.message ?? 'unknown error'));
       await reply(chatId, '❌ Could not resolve ' + username + '. Resolver error: ' + String(resolverError?.message ?? 'unknown error').slice(0, 220));
@@ -358,10 +388,10 @@ async function lookupUserId(chatId, userId) {
   try {
     const resolved = await resolverRequest('/v1/resolve', { user_id: String(userId) });
     const profile = resolved.result;
-    await result(chatId, { kind: profile.kind, name: profile.name, username: profile.username, id: profile.id });
+    await finishSearching(statusMessage, chatId, { kind: profile.kind, name: profile.name, username: profile.username, id: profile.id });
   } catch (error) {
     console.warn('Numeric profile resolution unavailable; trying SangMata by ID.');
-    await result(chatId, { kind: 'User', name: null, username: null, id: String(userId) });
+    await finishSearching(statusMessage, chatId, { kind: 'User', name: null, username: null, id: String(userId) });
   }
 }
 
@@ -398,17 +428,17 @@ async function forwarded(message) {
 
   if (origin.type === 'user' && origin.sender_user) {
     const user = origin.sender_user;
-    await result(message.chat.id, { kind: user.is_bot ? 'Bot' : 'User', name: [user.first_name, user.last_name].filter(Boolean).join(' '), username: user.username, id: user.id });
+    const statusMessage = await sendSearching(message.chat.id);\n    await finishSearching(statusMessage, message.chat.id, { kind: user.is_bot ? 'Bot' : 'User', name: [user.first_name, user.last_name].filter(Boolean).join(' '), username: user.username, id: user.id });
     return true;
   }
   if (origin.type === 'chat' && origin.sender_chat) {
     const chat = origin.sender_chat;
-    await result(message.chat.id, { kind: 'Group', name: chat.title, username: chat.username, id: chat.id });
+    const statusMessage = await sendSearching(message.chat.id);\n    await finishSearching(statusMessage, message.chat.id, { kind: 'Group', name: chat.title, username: chat.username, id: chat.id });
     return true;
   }
   if (origin.type === 'channel' && origin.chat) {
     const chat = origin.chat;
-    await result(message.chat.id, { kind: 'Channel', name: chat.title, username: chat.username, id: chat.id });
+    const statusMessage = await sendSearching(message.chat.id);\n    await finishSearching(statusMessage, message.chat.id, { kind: 'Channel', name: chat.title, username: chat.username, id: chat.id });
     return true;
   }
   if (origin.type === 'hidden_user') {
