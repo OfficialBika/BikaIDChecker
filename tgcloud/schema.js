@@ -18,7 +18,7 @@ export const resolverConfig = table('resolver_config', {
   updatedAt: integer('updated_at').notNull()
 });
 
-export const sangmataHistory = table('sangmata_history', {
+export const accountNameHistory = table('sangmata_history', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   entityId: text('entity_id').notNull(),
   rawText: text('raw_text').notNull(),
