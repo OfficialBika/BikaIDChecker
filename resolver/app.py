@@ -229,61 +229,47 @@ def _names_button_position(message: Any) -> tuple[int, int] | None:
 
 
 async def _wait_for_stats_message(conversation: Any, sent_message: Any, *, log_context: str) -> Any:
-    """Accept either a new Stats reply or a bot-edited loading message."""
-    candidate = await conversation.get_response(message=sent_message, timeout=8)
-    position = _names_button_position(candidate)
-    logger.info(
-        "%s received first reply message_id=%s chars=%s names_button=%s",
-        log_context,
-        getattr(candidate, "id", None),
-        len(str(getattr(candidate, "message", "") or "")),
-        bool(position),
-    )
-    if position is not None:
-        return candidate
+    """Poll the bot chat for the final Stats page, including separate messages and edits."""
+    deadline = time.monotonic() + 24
+    entity = "DARKC4MSHOW_BOT"
+    last_seen: dict[int, tuple[int, bool]] = {}
 
-    # DARKC4MSHOW can send a placeholder first and edit that same message
-    # into the Stats page. get_response() alone cannot observe that edit.
-    try:
-        edited = await conversation.get_edit(message=candidate, timeout=6)
-        position = _names_button_position(edited)
-        logger.info(
-            "%s received edited reply message_id=%s chars=%s names_button=%s",
-            log_context,
-            getattr(edited, "id", None),
-            len(str(getattr(edited, "message", "") or "")),
-            bool(position),
-        )
-        if position is not None:
-            return edited
-        candidate = edited
-    except asyncio.TimeoutError:
-        logger.info("%s first reply was not edited before timeout", log_context)
-
-    # Some bot versions send a separate Stats message after their placeholder.
-    try:
-        followup = await conversation.get_response(message=sent_message, timeout=3)
-        position = _names_button_position(followup)
-        logger.info(
-            "%s received follow-up message_id=%s chars=%s names_button=%s",
-            log_context,
-            getattr(followup, "id", None),
-            len(str(getattr(followup, "message", "") or "")),
-            bool(position),
-        )
-        if position is not None:
-            return followup
+    while time.monotonic() < deadline:
         try:
-            edited_followup = await conversation.get_edit(message=followup, timeout=2)
-            position = _names_button_position(edited_followup)
-            logger.info("%s follow-up edit names_button=%s", log_context, bool(position))
-            if position is not None:
-                return edited_followup
-        except asyncio.TimeoutError:
-            pass
-    except asyncio.TimeoutError:
-        logger.warning("%s no Stats page with Names button arrived", log_context)
+            recent = await client.get_messages(entity, limit=15)  # type: ignore[union-attr]
+        except Exception:
+            logger.exception("%s failed to poll bot chat history", log_context)
+            recent = []
 
+        for candidate in reversed(list(recent or [])):
+            message_id = int(getattr(candidate, "id", 0) or 0)
+            if message_id <= int(getattr(sent_message, "id", 0) or 0):
+                continue
+            if getattr(candidate, "out", False):
+                continue
+
+            body = str(getattr(candidate, "message", "") or "")
+            position = _names_button_position(candidate)
+            signature = (len(body), bool(position))
+            if last_seen.get(message_id) != signature:
+                last_seen[message_id] = signature
+                logger.info(
+                    "%s observed bot message id=%s chars=%s names_button=%s",
+                    log_context, message_id, len(body), bool(position)
+                )
+            if position is not None and body.strip():
+                logger.info(
+                    "%s captured final Stats page message_id=%s chars=%s",
+                    log_context, message_id, len(body)
+                )
+                return candidate
+
+        await asyncio.sleep(1)
+
+    logger.warning(
+        "%s no Stats page with Names button found after polling bot chat; observed_message_ids=%s",
+        log_context, sorted(last_seen.keys())[-8:]
+    )
     raise asyncio.TimeoutError("No DARKC4MSHOW Stats page with a Names button was received.")
 
 
