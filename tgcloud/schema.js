@@ -28,3 +28,15 @@ export const accountNameHistory = table('account_name_history', {
 }, (t) => ({
   lookupIdx: index('idx_account_name_history_lookup').on(t.entityId, t.fetchedAt)
 }));
+
+
+export const legacySangmataHistory = table('sangmata_history', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  entityId: text('entity_id').notNull(),
+  rawText: text('raw_text').notNull(),
+  namesJson: text('names_json').notNull(),
+  usernamesJson: text('usernames_json').notNull(),
+  fetchedAt: integer('fetched_at').notNull()
+}, (t) => ({
+  lookupIdx: index('idx_sangmata_history_lookup').on(t.entityId, t.fetchedAt)
+}));
