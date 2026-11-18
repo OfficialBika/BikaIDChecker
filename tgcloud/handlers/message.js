@@ -424,17 +424,20 @@ async function forwarded(message) {
 
   if (origin.type === 'user' && origin.sender_user) {
     const user = origin.sender_user;
-    const statusMessage = await sendSearching(message.chat.id);\n    await finishSearching(statusMessage, message.chat.id, { kind: user.is_bot ? 'Bot' : 'User', name: [user.first_name, user.last_name].filter(Boolean).join(' '), username: user.username, id: user.id });
+    const statusMessage = await sendSearching(message.chat.id);
+    await finishSearching(statusMessage, message.chat.id, { kind: user.is_bot ? 'Bot' : 'User', name: [user.first_name, user.last_name].filter(Boolean).join(' '), username: user.username, id: user.id });
     return true;
   }
   if (origin.type === 'chat' && origin.sender_chat) {
     const chat = origin.sender_chat;
-    const statusMessage = await sendSearching(message.chat.id);\n    await finishSearching(statusMessage, message.chat.id, { kind: 'Group', name: chat.title, username: chat.username, id: chat.id });
+    const statusMessage = await sendSearching(message.chat.id);
+    await finishSearching(statusMessage, message.chat.id, { kind: 'Group', name: chat.title, username: chat.username, id: chat.id });
     return true;
   }
   if (origin.type === 'channel' && origin.chat) {
     const chat = origin.chat;
-    const statusMessage = await sendSearching(message.chat.id);\n    await finishSearching(statusMessage, message.chat.id, { kind: 'Channel', name: chat.title, username: chat.username, id: chat.id });
+    const statusMessage = await sendSearching(message.chat.id);
+    await finishSearching(statusMessage, message.chat.id, { kind: 'Channel', name: chat.title, username: chat.username, id: chat.id });
     return true;
   }
   if (origin.type === 'hidden_user') {
