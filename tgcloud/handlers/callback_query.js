@@ -15,9 +15,9 @@ function formatDate(timestamp) {
 export default async function (query) {
   if (!query?.id) return;
   const callbackData = String(query.data ?? '');
-  const sangmataMatch = callbackData.match(/^sangmata:([1-9][0-9]{0,19})$/);
+  const sangmataMatch = callbackData.match(/^sangmata:(username|name):([1-9][0-9]{0,19})$/);
   if (sangmataMatch) {
-    const entityId = sangmataMatch[1];
+    const field = sangmataMatch[1];\n    const entityId = sangmataMatch[2];
     try {
       const snapshot = await db.select({
         rawText: sangmataHistory.rawText,
@@ -38,20 +38,17 @@ export default async function (query) {
       try { usernames = JSON.parse(snapshot.usernamesJson); } catch {}
       if (!Array.isArray(names)) names = [];
       if (!Array.isArray(usernames)) usernames = [];
+      const selected = field === 'name' ? names : usernames;
+      const title = field === 'name' ? '📜 <b>Name History</b>' : '🔗 <b>Username History</b>';
       const lines = [
-        '🕘 <b>SangMata History</b>',
+        title,
         '',
         '<b>Telegram ID:</b> <code>' + esc(entityId) + '</code>',
         '<b>Fetched:</b> ' + esc(formatDate(snapshot.fetchedAt)),
         '',
-        '<b>Names (' + names.length + ')</b>',
-        ...(names.length ? names.slice(0, 15).map((value, index) => (index + 1) + '. ' + esc(String(value).slice(0, 100))) : ['No names returned']),
-        '',
-        '<b>Usernames (' + usernames.length + ')</b>',
-        ...(usernames.length ? usernames.slice(0, 15).map((value, index) => (index + 1) + '. ' + esc('@' + String(value).replace(/^@/, '').slice(0, 100))) : ['No usernames returned']),
-        '',
-        '<b>Original SangMata response</b>',
-        '<pre>' + esc(String(snapshot.rawText).slice(0, 700)) + '</pre>'
+        ...(selected.length
+          ? selected.slice(0, 15).map((value, index) => (index + 1) + '. ' + esc(field === 'name' ? String(value).slice(0, 100) : '@' + String(value).replace(/^@/, '').slice(0, 100)))
+          : [field === 'name' ? 'No name history returned.' : 'No username history returned.'])
       ];
       const chatId = query.message?.chat?.id;
       if (chatId) {
