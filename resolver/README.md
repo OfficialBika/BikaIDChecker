@@ -19,13 +19,10 @@ A small, private-by-key HTTP service used by the Telegram Serverless bot to reso
 
 Successful `/v1/resolve` responses include only public peer metadata needed by BikaIDChecker: ID, type, display name, username, and selected public flags. Phone numbers, access hashes, session data, and private profile fields are never returned.
 
-- `POST /v1/darkcams/names` — requires `X-API-Key` and accepts exactly one of:
-  - `{"username":"@publicusername"}`
-  - `{"user_id":"123456789"}`
+- `POST /v1/darkcams/stats` — requires `X-API-Key` and accepts exactly one of `username` or `user_id`. The Telethon user session sends that target to `@DARKC4MSHOW_BOT`, waits for the Stats response containing its Names inline button, and returns only the Stats page text needed for the initial result screen.
+- `POST /v1/darkcams/names` — requires `X-API-Key` and accepts exactly one of `username` or `user_id`. The user session opens the Stats response, locates and clicks its `Names` inline button, then parses only dated usernames and first-name/last-name history from the Names response. Groups, channels, messages, friends, gifts, and other menu sections are not queried.
 
-  The Render-hosted Telethon **user account** opens `@DARKC4MSHOW_BOT`, sends the target username or numeric ID, waits for the Stats response, locates and clicks its `Names` inline button, then parses only the dated username and first-name/last-name history from the Names response. Groups, channels, messages, friends, gifts, and other Stats menu sections are not queried.
-
-  Before using this endpoint, open `@DARKC4MSHOW_BOT` once with the configured account and confirm that account can access its Stats and Names pages. The bot may require its own access, credits, or payment. The resolver does not bypass those requirements. Requests are serialized because one Telegram user session is shared by all lookups.
+Before using these endpoints, open `@DARKC4MSHOW_BOT` once with the configured Telegram account and confirm that account can access its Stats and Names pages. The bot may require its own access, credits, or payment. The resolver does not bypass those requirements. Requests are serialized because one Telegram user session is shared by all lookups.
 
 ## Required Render environment variables
 
