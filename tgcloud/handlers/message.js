@@ -93,12 +93,11 @@ async function resolverRequest(path, payload) {
     response = await fetch(RESOLVER_BASE_URL + path, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-API-Key': config.apiKey },
-      body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(30000)
+      body: JSON.stringify(payload)
     });
   } catch (error) {
     console.error('Resolver network request failed:', path, String(error?.message ?? error));
-    throw new Error('Cannot connect to the Render resolver. Check its URL and network availability.');
+    throw new Error('Fetch failed: ' + String(error?.message ?? error).slice(0, 180));
   }
   let body = {};
   try { body = await response.json(); } catch {}
