@@ -27,6 +27,7 @@ ID_RE = re.compile(r"^[1-9][0-9]{0,19}$")
 client: TelegramClient | None = None
 client_ready = False
 client_lock = asyncio.Lock()
+darkcams_stats_cache: dict[str, tuple[int, int]] = {}
 
 
 def normalize_username(value: str) -> str:
@@ -227,9 +228,130 @@ def _names_button_position(message: Any) -> tuple[int, int] | None:
     return None
 
 
+async def _wait_for_stats_message(conversation: Any, sent_message: Any, *, log_context: str) -> Any:
+    """Accept either a new Stats reply or a bot-edited loading message."""
+    candidate = await conversation.get_response(message=sent_message, timeout=10)
+    position = _names_button_position(candidate)
+    logger.info(
+        "%s received first reply message_id=%s chars=%s names_button=%s",
+        log_context,
+        getattr(candidate, "id", None),
+        len(str(getattr(candidate, "message", "") or "")),
+        bool(position),
+    )
+    if position is not None:
+        return candidate
+
+    # DARKC4MSHOW can send a placeholder first and edit that same message
+    # into the Stats page. get_response() alone cannot observe that edit.
+    try:
+        edited = await conversation.get_edit(message=candidate, timeout=9)
+        position = _names_button_position(edited)
+        logger.info(
+            "%s received edited reply message_id=%s chars=%s names_button=%s",
+            log_context,
+            getattr(edited, "id", None),
+            len(str(getattr(edited, "message", "") or "")),
+            bool(position),
+        )
+        if position is not None:
+            return edited
+        candidate = edited
+    except asyncio.TimeoutError:
+        logger.info("%s first reply was not edited before timeout", log_context)
+
+    # Some bot versions send a separate Stats message after their placeholder.
+    try:
+        followup = await conversation.get_response(message=sent_message, timeout=5)
+        position = _names_button_position(followup)
+        logger.info(
+            "%s received follow-up message_id=%s chars=%s names_button=%s",
+            log_context,
+            getattr(followup, "id", None),
+            len(str(getattr(followup, "message", "") or "")),
+            bool(position),
+        )
+        if position is not None:
+            return followup
+        try:
+            edited_followup = await conversation.get_edit(message=followup, timeout=3)
+            position = _names_button_position(edited_followup)
+            logger.info("%s follow-up edit names_button=%s", log_context, bool(position))
+            if position is not None:
+                return edited_followup
+        except asyncio.TimeoutError:
+            pass
+    except asyncio.TimeoutError:
+        logger.warning("%s no Stats page with Names button arrived", log_context)
+
+    raise asyncio.TimeoutError("No DARKC4MSHOW Stats page with a Names button was received.")
+
+
+async def _wait_for_names_page(conversation: Any, stats_message: Any) -> list[Any]:
+    """The Names button may edit the Stats message or send a separate reply."""
+    messages: list[Any] = []
+    try:
+        edited = await conversation.get_edit(message=stats_message, timeout=10)
+        messages.append(edited)
+        parsed = parse_darkcams_names(messages)
+        logger.info(
+            "DARKC4MSHOW Names edit received message_id=%s chars=%s parsed=%s",
+            getattr(edited, "id", None),
+            len(str(getattr(edited, "message", "") or "")),
+            parsed["has_history"],
+        )
+        if parsed["has_history"]:
+            return messages
+    except asyncio.TimeoutError:
+        logger.info("DARKC4MSHOW Names click did not edit the Stats message")
+
+    try:
+        response = await conversation.get_response(timeout=10)
+        messages.append(response)
+        parsed = parse_darkcams_names(messages)
+        logger.info(
+            "DARKC4MSHOW Names response received message_id=%s chars=%s parsed=%s",
+            getattr(response, "id", None),
+            len(str(getattr(response, "message", "") or "")),
+            parsed["has_history"],
+        )
+        if parsed["has_history"]:
+            return messages
+    except asyncio.TimeoutError:
+        logger.info("DARKC4MSHOW Names click produced no separate response")
+
+    # If the bot used a placeholder, the Names page may be a later edit.
+    if messages:
+        try:
+            edited = await conversation.get_edit(message=messages[-1], timeout=5)
+            messages.append(edited)
+        except asyncio.TimeoutError:
+            pass
+    return messages
+
+
+async def _cached_stats_message(user_id: str) -> Any | None:
+    cached = darkcams_stats_cache.get(user_id)
+    if not cached:
+        return None
+    message_id, expires_at = cached
+    if expires_at <= int(time.time()):
+        darkcams_stats_cache.pop(user_id, None)
+        return None
+    try:
+        message = await client.get_messages("DARKC4MSHOW_BOT", ids=message_id)  # type: ignore[union-attr]
+    except Exception:
+        logger.warning("DARKC4MSHOW cached Stats message could not be loaded")
+        return None
+    if message is None or _names_button_position(message) is None:
+        darkcams_stats_cache.pop(user_id, None)
+        return None
+    return message
+
+
 @app.post("/v1/darkcams/stats", dependencies=[Depends(require_api_key)])
 async def darkcams_stats(payload: DarkcamsNamesRequest) -> dict[str, Any]:
-    """Fetch only the initial Stats page and its Names button from DARKC4MSHOW."""
+    """Send the target to DARKC4MSHOW and return its Stats page."""
     if (payload.username is None) == (payload.user_id is None):
         raise HTTPException(status_code=400, detail="Provide exactly one of username or user_id.")
     if not client_ready or client is None:
@@ -237,23 +359,29 @@ async def darkcams_stats(payload: DarkcamsNamesRequest) -> dict[str, Any]:
 
     try:
         target = "@" + normalize_username(payload.username) if payload.username is not None else str(payload.user_id)
+        cache_key = str(payload.user_id) if payload.user_id is not None else target.casefold()
         async with client_lock:
-            async with client.conversation("DARKC4MSHOW_BOT", timeout=55, exclusive=True) as conversation:
-                await conversation.send_message(target)
-                stats_message = None
-                for _ in range(3):
-                    candidate = await conversation.get_response(timeout=20)
-                    if _names_button_position(candidate) is not None:
-                        stats_message = candidate
-                        break
-                if stats_message is None:
-                    raise HTTPException(
-                        status_code=502,
-                        detail="DARKC4MSHOW did not return its Stats page with a Names button. Check session access and bot requirements.",
-                    )
-        stats_text = str(getattr(stats_message, "message", "") or "").strip()
-        if not stats_text:
-            raise HTTPException(status_code=502, detail="DARKC4MSHOW Stats page was empty.")
+            logger.info("DARKC4MSHOW Stats request started (target_type=%s)", "id" if payload.user_id else "username")
+            async with client.conversation("DARKC4MSHOW_BOT", timeout=35, exclusive=True) as conversation:
+                sent_message = await conversation.send_message(target)
+                logger.info("DARKC4MSHOW target message sent (outgoing_message_id=%s)", getattr(sent_message, "id", None))
+                stats_message = await _wait_for_stats_message(
+                    conversation, sent_message, log_context="DARKC4MSHOW Stats"
+                )
+
+            stats_text = str(getattr(stats_message, "message", "") or "").strip()
+            if not stats_text:
+                raise HTTPException(status_code=502, detail="DARKC4MSHOW Stats page was empty.")
+            darkcams_stats_cache[cache_key] = (
+                int(stats_message.id),
+                int(time.time()) + 600,
+            )
+            logger.info(
+                "DARKC4MSHOW Stats page captured (message_id=%s chars=%s)",
+                stats_message.id,
+                len(stats_text),
+            )
+
         return {
             "ok": True,
             "source": "DARKC4MSHOW_BOT",
@@ -264,7 +392,11 @@ async def darkcams_stats(payload: DarkcamsNamesRequest) -> dict[str, Any]:
     except HTTPException:
         raise
     except asyncio.TimeoutError as exc:
-        raise HTTPException(status_code=504, detail="Timed out waiting for @DARKC4MSHOW_BOT Stats page.") from exc
+        logger.warning("DARKC4MSHOW Stats timed out while waiting for its reply or edit")
+        raise HTTPException(
+            status_code=504,
+            detail="DARKC4MSHOW did not finish its Stats page in time. The request was sent; the bot reply/edit was not captured.",
+        ) from exc
     except FloodWaitError as exc:
         raise HTTPException(status_code=429, detail="Telegram rate limit reached. Retry later.", headers={"Retry-After": str(max(1, int(exc.seconds)))}) from exc
     except RPCError as exc:
@@ -277,7 +409,7 @@ async def darkcams_stats(payload: DarkcamsNamesRequest) -> dict[str, Any]:
 
 @app.post("/v1/darkcams/names", dependencies=[Depends(require_api_key)])
 async def darkcams_names(payload: DarkcamsNamesRequest) -> dict[str, Any]:
-    """Ask the configured user session to open DARKC4MSHOW stats, press Names, and parse its reply."""
+    """Open the target's cached Stats page, click Names, and parse dated history."""
     if (payload.username is None) == (payload.user_id is None):
         raise HTTPException(status_code=400, detail="Provide exactly one of username or user_id.")
     if not client_ready or client is None:
@@ -285,43 +417,34 @@ async def darkcams_names(payload: DarkcamsNamesRequest) -> dict[str, Any]:
 
     try:
         target = "@" + normalize_username(payload.username) if payload.username is not None else str(payload.user_id)
+        cache_key = str(payload.user_id) if payload.user_id is not None else target.casefold()
         async with client_lock:
-            async with client.conversation(
-                "DARKC4MSHOW_BOT",
-                timeout=55,
-                exclusive=True,
-            ) as conversation:
-                await conversation.send_message(target)
-
-                stats_message = None
-                button_position = None
-                # The bot can first send a "Looking for data..." placeholder.
-                # Wait for the actual Stats message containing the Names inline button.
-                for _ in range(3):
-                    candidate = await conversation.get_response(timeout=20)
-                    position = _names_button_position(candidate)
-                    if position is not None:
-                        stats_message = candidate
-                        button_position = position
-                        break
-
-                if stats_message is None or button_position is None:
-                    raise HTTPException(
-                        status_code=502,
-                        detail="DARKC4MSHOW did not return a Stats message with a Names button. Check that this Telegram account can use @DARKC4MSHOW_BOT.",
+            stats_message = await _cached_stats_message(cache_key)
+            if stats_message is None:
+                logger.info("DARKC4MSHOW Names request has no cached Stats page; requesting a fresh one")
+                async with client.conversation("DARKC4MSHOW_BOT", timeout=35, exclusive=True) as conversation:
+                    sent_message = await conversation.send_message(target)
+                    logger.info("DARKC4MSHOW target message sent for Names (outgoing_message_id=%s)", getattr(sent_message, "id", None))
+                    stats_message = await _wait_for_stats_message(
+                        conversation, sent_message, log_context="DARKC4MSHOW Names Stats"
                     )
-
-                await stats_message.click(*button_position)
-                names_message = await conversation.get_response(timeout=25)
-                messages = [names_message]
-
-                # Collect any continuation messages if the Names page is split.
-                for _ in range(3):
-                    try:
-                        extra = await conversation.get_response(timeout=1.5)
-                    except asyncio.TimeoutError:
-                        break
-                    messages.append(extra)
+                    darkcams_stats_cache[cache_key] = (
+                        int(stats_message.id),
+                        int(time.time()) + 600,
+                    )
+                    position = _names_button_position(stats_message)
+                    if position is None:
+                        raise HTTPException(status_code=502, detail="DARKC4MSHOW Stats page did not include a Names button.")
+                    await stats_message.click(*position)
+                    messages = await _wait_for_names_page(conversation, stats_message)
+            else:
+                position = _names_button_position(stats_message)
+                if position is None:
+                    raise HTTPException(status_code=502, detail="The cached DARKC4MSHOW Stats page no longer has its Names button.")
+                logger.info("DARKC4MSHOW pressing cached Names button (stats_message_id=%s)", stats_message.id)
+                async with client.conversation("DARKC4MSHOW_BOT", timeout=30, exclusive=True) as conversation:
+                    await stats_message.click(*position)
+                    messages = await _wait_for_names_page(conversation, stats_message)
 
         parsed = parse_darkcams_names(messages)
         if not parsed["raw_text"]:
@@ -329,9 +452,15 @@ async def darkcams_names(payload: DarkcamsNamesRequest) -> dict[str, Any]:
         if not parsed["has_history"]:
             raise HTTPException(
                 status_code=502,
-                detail="The Names page was received, but no dated name or username entries could be parsed.",
+                detail="DARKC4MSHOW Names page was received, but no dated name or username entries were found.",
             )
 
+        logger.info(
+            "DARKC4MSHOW Names history parsed (names=%s usernames=%s messages=%s)",
+            len(parsed["names"]),
+            len(parsed["usernames"]),
+            parsed["message_count"],
+        )
         return {
             "ok": True,
             "source": "DARKC4MSHOW_BOT",
@@ -342,9 +471,10 @@ async def darkcams_names(payload: DarkcamsNamesRequest) -> dict[str, Any]:
     except HTTPException:
         raise
     except asyncio.TimeoutError as exc:
+        logger.warning("DARKC4MSHOW Names request timed out")
         raise HTTPException(
             status_code=504,
-            detail="Timed out while waiting for @DARKC4MSHOW_BOT. Confirm the session account has started the bot and can access its Stats/Names pages.",
+            detail="Timed out while waiting for @DARKC4MSHOW_BOT. The Stats reply or Names-button edit was not captured.",
         ) from exc
     except FloodWaitError as exc:
         raise HTTPException(
@@ -358,6 +488,7 @@ async def darkcams_names(payload: DarkcamsNamesRequest) -> dict[str, Any]:
             status_code=502,
             detail="Could not use @DARKC4MSHOW_BOT from the configured Telegram session.",
         ) from exc
-    except Exception as exc:
+    except Exception:
         logger.exception("DARKC4MSHOW Names lookup failed.")
-        raise HTTPException(status_code=502, detail="DARKC4MSHOW Names lookup failed temporarily.") from exc
+        raise HTTPException(status_code=502, detail="DARKC4MSHOW Names lookup failed temporarily.") from None
+
