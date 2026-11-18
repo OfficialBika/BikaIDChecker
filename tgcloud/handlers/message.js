@@ -322,10 +322,19 @@ async function result(chatId, data) {
 
   const keyboard = [[{ text: '📋 Copy ID', copy_text: { text: String(data.id) } }]];
   if (sangmata) {
-    const customEmoji = { text: ' ', icon_custom_emoji_id: '5807468998840814853' };
     keyboard.push(
-      [{ text: '🔗 Username History', callback_data: 'sangmata:username:' + String(data.id), style: 'primary' }, customEmoji],
-      [{ text: '📜 Name History', callback_data: 'sangmata:name:' + String(data.id), style: 'primary' }, customEmoji]
+      [{
+        text: '🔗 Username History',
+        callback_data: 'sangmata:username:' + String(data.id),
+        style: 'primary',
+        icon_custom_emoji_id: '5807468998840814853'
+      }],
+      [{
+        text: '📜 Name History',
+        callback_data: 'sangmata:name:' + String(data.id),
+        style: 'primary',
+        icon_custom_emoji_id: '5807468998840814853'
+      }]
     );
   }
   return reply(chatId, lines.join('\n'), {
