@@ -4,20 +4,20 @@ import re
 from typing import Any, Iterable
 
 USERNAME_RE = re.compile(r"(?<![A-Za-z0-9_])@([A-Za-z][A-Za-z0-9_]{4,31})")
-NAME_HEADING_RE = re.compile(r"^(?:📛|📝)?\\s*(?:old\\s+)?names?(?:\\s+history)?\\s*:?$", re.I)
-USERNAME_HEADING_RE = re.compile(r"^(?:🔗|👤)?\\s*(?:old\\s+)?usernames?(?:\\s+history)?\\s*:?$", re.I)
+NAME_HEADING_RE = re.compile(r"^(?:📛|📝)?\s*(?:old\s+)?names?(?:\s+history)?\s*:?$", re.I)
+USERNAME_HEADING_RE = re.compile(r"^(?:🔗|👤)?\s*(?:old\s+)?usernames?(?:\s+history)?\s*:?$", re.I)
 DATE_SUFFIX_RE = re.compile(
-    r"\\s*(?:[-–—|,()]\\s*)?(?:\\d{4}[-/.年]\\d{1,2}[-/.月]\\d{1,2}日?|"
-    r"\\d{1,2}[-/.]\\d{1,2}[-/.]\\d{2,4}|"
-    r"\\d{1,2}\\s+[A-Za-z]{3,9}\\s+\\d{4})\\)?\\s*$"
+    r"\s*(?:[-–—|,()]\s*)?(?:\d{4}[-/.年]\d{1,2}[-/.月]\d{1,2}日?|"
+    r"\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4}|"
+    r"\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4})\)?\s*$"
 )
-BULLET_RE = re.compile(r"^\\s*(?:[•●▪▫*-]|\\d+[.)])\\s*")
+BULLET_RE = re.compile(r"^\s*(?:[•●▪▫*-]|\d+[.)])\s*")
 
 
 def _clean_entry(line: str) -> str:
     value = BULLET_RE.sub("", line.strip())
-    value = re.sub(r"^\\s*(?:name|username)\\s*:\\s*", "", value, flags=re.I)
-    value = DATE_SUFFIX_RE.sub("", value).strip(" \\t:;|—–-")
+    value = re.sub(r"^\s*(?:name|username)\s*:\s*", "", value, flags=re.I)
+    value = DATE_SUFFIX_RE.sub("", value).strip(" \t:;|—–-")
     return value
 
 
@@ -42,7 +42,7 @@ def parse_sangmata_messages(messages: Iterable[Any]) -> dict[str, Any]:
         if text:
             chunks.append(text)
 
-    raw_text = "\\n\\n".join(chunks).strip()
+    raw_text = "\n\n".join(chunks).strip()
     names: list[str] = []
     usernames: list[str] = []
     section: str | None = None
@@ -58,8 +58,8 @@ def parse_sangmata_messages(messages: Iterable[Any]) -> dict[str, Any]:
             section = "username"
             continue
 
-        name_match = re.match(r"^name\\s*:\\s*(.+)$", line, re.I)
-        username_match = re.match(r"^username\\s*:\\s*(.+)$", line, re.I)
+        name_match = re.match(r"^name\s*:\s*(.+)$", line, re.I)
+        username_match = re.match(r"^username\s*:\s*(.+)$", line, re.I)
         if name_match:
             value = _clean_entry(name_match.group(1))
             if value:
