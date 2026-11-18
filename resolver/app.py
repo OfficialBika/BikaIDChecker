@@ -17,7 +17,7 @@ from telethon.errors import FloodWaitError, RPCError
 from telethon.sessions import SQLiteSession, StringSession
 from telethon.tl.types import Channel, Chat, User
 
-from resolver.sangmata import parse_sangmata_messages
+from resolver.darkcams import parse_darkcams_names
 
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 logger = logging.getLogger("bikaidchecker.resolver")
@@ -155,9 +155,10 @@ class ResolveRequest(BaseModel):
     user_id: str | None = Field(default=None, max_length=20)
 
 
-class SangMataHistoryRequest(BaseModel):
+class DarkcamsNamesRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    user_id: str = Field(min_length=1, max_length=20, pattern=r"^[1-9][0-9]{0,19}$")
+    username: str | None = Field(default=None, max_length=256)
+    user_id: str | None = Field(default=None, max_length=20, pattern=r"^[1-9][0-9]{0,19}$")
 
 
 async def require_api_key(x_api_key: str | None = Header(default=None)) -> None:
@@ -216,43 +217,78 @@ async def resolve(payload: ResolveRequest, request: Request) -> dict[str, Any]:
 
 
 
-@app.post("/v1/sangmata/history", dependencies=[Depends(require_api_key)])
-async def sangmata_history(payload: SangMataHistoryRequest) -> dict[str, Any]:
-    """Query SangMata from the configured user account and return its reply snapshot."""
+def _names_button_position(message: Any) -> tuple[int, int] | None:
+    buttons = getattr(message, "buttons", None) or []
+    for row_index, row in enumerate(buttons):
+        for column_index, button in enumerate(row):
+            label = str(getattr(button, "text", "") or "").strip().casefold()
+            if "names" in label:
+                return row_index, column_index
+    return None
+
+
+@app.post("/v1/darkcams/names", dependencies=[Depends(require_api_key)])
+async def darkcams_names(payload: DarkcamsNamesRequest) -> dict[str, Any]:
+    """Ask the configured user session to open DARKC4MSHOW stats, press Names, and parse its reply."""
+    if (payload.username is None) == (payload.user_id is None):
+        raise HTTPException(status_code=400, detail="Provide exactly one of username or user_id.")
     if not client_ready or client is None:
         raise HTTPException(status_code=503, detail="Resolver is not configured or Telegram session is unavailable.")
 
     try:
+        target = "@" + normalize_username(payload.username) if payload.username is not None else str(payload.user_id)
         async with client_lock:
             async with client.conversation(
-                "SangMata_BOT",
-                timeout=25,
+                "DARKC4MSHOW_BOT",
+                timeout=55,
                 exclusive=True,
             ) as conversation:
-                # SangMata's private-chat command supports global history lookup by ID.
-                await conversation.send_message(f"allhistory {payload.user_id}")
-                first = await conversation.get_response()
-                messages = [first]
+                await conversation.send_message(target)
 
-                # SangMata may split a long history over multiple Telegram messages.
-                # Collect the remaining parts until the conversation is quiet.
-                for _ in range(7):
+                stats_message = None
+                button_position = None
+                # The bot can first send a "Looking for data..." placeholder.
+                # Wait for the actual Stats message containing the Names inline button.
+                for _ in range(6):
+                    candidate = await conversation.get_response(timeout=35)
+                    position = _names_button_position(candidate)
+                    if position is not None:
+                        stats_message = candidate
+                        button_position = position
+                        break
+
+                if stats_message is None or button_position is None:
+                    raise HTTPException(
+                        status_code=502,
+                        detail="DARKC4MSHOW did not return a Stats message with a Names button. Check that this Telegram account can use @DARKC4MSHOW_BOT.",
+                    )
+
+                await stats_message.click(*button_position)
+                names_message = await conversation.get_response(timeout=35)
+                messages = [names_message]
+
+                # Collect any continuation messages if the Names page is split.
+                for _ in range(3):
                     try:
                         extra = await conversation.get_response(timeout=1.5)
                     except asyncio.TimeoutError:
                         break
                     messages.append(extra)
 
-        parsed = parse_sangmata_messages(messages)
+        parsed = parse_darkcams_names(messages)
         if not parsed["raw_text"]:
-            raise HTTPException(status_code=502, detail="SangMata returned an empty response.")
+            raise HTTPException(status_code=502, detail="DARKC4MSHOW returned an empty Names page.")
+        if not parsed["has_history"]:
+            raise HTTPException(
+                status_code=502,
+                detail="The Names page was received, but no dated name or username entries could be parsed.",
+            )
 
         return {
             "ok": True,
-            "source": "SangMata_BOT",
-            "user_id": payload.user_id,
+            "source": "DARKC4MSHOW_BOT",
+            "user_id": str(payload.user_id or ""),
             "fetched_at": int(time.time()),
-            "has_history": bool(parsed["names"] or parsed["usernames"]),
             **parsed,
         }
     except HTTPException:
@@ -260,7 +296,7 @@ async def sangmata_history(payload: SangMataHistoryRequest) -> dict[str, Any]:
     except asyncio.TimeoutError as exc:
         raise HTTPException(
             status_code=504,
-            detail="SangMata did not respond in time. Confirm the account can open @SangMata_BOT and retry.",
+            detail="Timed out while waiting for @DARKC4MSHOW_BOT. Confirm the session account has started the bot and can access its Stats/Names pages.",
         ) from exc
     except FloodWaitError as exc:
         raise HTTPException(
@@ -269,11 +305,11 @@ async def sangmata_history(payload: SangMataHistoryRequest) -> dict[str, Any]:
             headers={"Retry-After": str(max(1, int(exc.seconds)))},
         ) from exc
     except RPCError as exc:
-        logger.warning("SangMata Telegram RPC failed: %s", type(exc).__name__)
+        logger.warning("DARKC4MSHOW Telegram RPC failed: %s", type(exc).__name__)
         raise HTTPException(
             status_code=502,
-            detail="Could not message @SangMata_BOT. Confirm the user account has started the bot and is not blocked.",
+            detail="Could not use @DARKC4MSHOW_BOT from the configured Telegram session.",
         ) from exc
     except Exception as exc:
-        logger.exception("SangMata lookup failed.")
-        raise HTTPException(status_code=502, detail="SangMata lookup failed temporarily.") from exc
+        logger.exception("DARKC4MSHOW Names lookup failed.")
+        raise HTTPException(status_code=502, detail="DARKC4MSHOW Names lookup failed temporarily.") from exc
