@@ -42,33 +42,32 @@ def test_parse_darkcams_empty_names_page():
     assert result["has_history"] is False
 
 
-def test_stats_waiter_accepts_edited_placeholder():
+def test_stats_waiter_polls_for_separate_stats_message(monkeypatch):
     import asyncio
     from types import SimpleNamespace
 
-    from resolver.app import _wait_for_stats_message
+    import resolver.app as app
 
-    placeholder = SimpleNamespace(id=10, message="Searching...", buttons=None)
+    sent = SimpleNamespace(id=9)
     stats = SimpleNamespace(
-        id=10,
+        id=11,
+        out=False,
         message="Stats for target",
         buttons=[[SimpleNamespace(text="🔗 Names")]],
     )
-    sent = SimpleNamespace(id=9)
 
-    class FakeConversation:
-        async def get_response(self, message=None, timeout=None):
-            assert message.id == sent.id
-            return placeholder
+    class FakeClient:
+        async def get_messages(self, entity, limit):
+            assert entity == "DARKC4MSHOW_BOT"
+            assert limit == 15
+            return [stats]
 
-        async def get_edit(self, message=None, timeout=None):
-            assert message.id == placeholder.id
-            return stats
-
-    result = asyncio.run(_wait_for_stats_message(
-        FakeConversation(), sent, log_context="test"
+    monkeypatch.setattr(app, "client", FakeClient())
+    monkeypatch.setattr(app.asyncio, "sleep", lambda _: asyncio.sleep(0))
+    result = asyncio.run(app._wait_for_stats_message(
+        object(), sent, log_context="test"
     ))
-    assert result.id == 10
+    assert result.id == 11
     assert result.message == "Stats for target"
 
 
