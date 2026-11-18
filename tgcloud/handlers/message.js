@@ -328,11 +328,6 @@ async function result(chatId, data) {
       [{ text: '📜 Name History', callback_data: 'sangmata:name:' + String(data.id), style: 'primary' }, customEmoji]
     );
   }
-  if (nameButton || usernameButton) {
-    if (usernameButton) keyboard.push([usernameButton]);
-    if (nameButton) keyboard.push([nameButton]);
-  }
-
   return reply(chatId, lines.join('\\n'), {
     parse_mode: 'HTML',
     reply_markup: { inline_keyboard: keyboard }
@@ -361,11 +356,11 @@ async function finishSearching(statusMessage, chatId, data) {
   return result(chatId, data);
 }
 
-async function lookupChat(chatId, username) {
+async function lookupChat(chatId, username, statusMessage = null) {
   try {
     const chat = await api.getChat({ chat_id: username });
     const kind = chat.type === 'channel' ? 'Channel' : chat.type === 'supergroup' ? 'Supergroup' : chat.type === 'group' ? 'Group' : 'Chat';
-    await result(chatId, {
+    await finishSearching(statusMessage, chatId, {
       kind,
       name: chat.title || [chat.first_name, chat.last_name].filter(Boolean).join(' '),
       username: chat.username,
@@ -384,7 +379,7 @@ async function lookupChat(chatId, username) {
   }
 }
 
-async function lookupUserId(chatId, userId) {
+async function lookupUserId(chatId, userId, statusMessage = null) {
   try {
     const resolved = await resolverRequest('/v1/resolve', { user_id: String(userId) });
     const profile = resolved.result;
@@ -537,11 +532,13 @@ export default async function (message) {
 
   const username = parsePublicUsername(text);
   if (username) {
-    await lookupChat(message.chat.id, username);
+    const statusMessage = await sendSearching(message.chat.id);
+    await lookupChat(message.chat.id, username, statusMessage);
     return;
   }
   if (/^[1-9][0-9]{0,19}$/.test(text)) {
-    await lookupUserId(message.chat.id, text);
+    const statusMessage = await sendSearching(message.chat.id);
+    await lookupUserId(message.chat.id, text, statusMessage);
     return;
   }
 
