@@ -1,7 +1,7 @@
 import { api, fetch } from 'sdk';
 import { db } from 'sdk/db';
 import { and, desc, eq } from 'sdk/db';
-import { entityHistory, resolverConfig, sangmataHistory } from '../schema.js';
+import { entityHistory, resolverConfig, accountNameHistory } from '../schema.js';
 import { CREATION_DATE_SAMPLES } from '../lib/creation-date-samples.js';
 
 const OWNER_ID = '8251006975';
@@ -375,7 +375,7 @@ async function lookupUserId(chatId, userId, statusMessage = null) {
     const profile = resolved.result;
     await finishSearching(statusMessage, chatId, { kind: profile.kind, name: profile.name, username: profile.username, id: profile.id });
   } catch (error) {
-    console.warn('Numeric profile resolution unavailable; trying SangMata by ID.');
+    console.warn('Numeric profile resolution unavailable; trying numeric ID fallback.');
     await finishSearching(statusMessage, chatId, { kind: 'User', name: null, username: null, id: String(userId) });
   }
 }
@@ -584,5 +584,5 @@ export default async function (message) {
     return;
   }
 
-  await reply(message.chat.id, 'Send a Telegram username, t.me link, numeric user ID, or use the share keyboard. Public usernames are resolved through Telegram Bot API and the MTProto resolver. User lookups also request available SangMata history. For custom emoji, send a Premium custom emoji or use /idemoji <id>.');
+  await reply(message.chat.id, 'Send a Telegram username, t.me link, numeric user ID, or use the share keyboard. Public usernames are resolved through Telegram Bot API and the MTProto resolver. User lookups show DARKC4MSHOW Stats and Name/Username History when available. For custom emoji, send a Premium custom emoji or use /idemoji <id>.');
 }
