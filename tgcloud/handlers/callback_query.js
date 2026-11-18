@@ -1,7 +1,7 @@
 import { api } from 'sdk';
 import { db } from 'sdk/db';
 import { and, desc, eq } from 'sdk/db';
-import { entityHistory } from '../schema.js';
+import { entityHistory, sangmataHistory } from '../schema.js';
 
 function esc(value) {
   return String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
@@ -14,7 +14,64 @@ function formatDate(timestamp) {
 
 export default async function (query) {
   if (!query?.id) return;
-  const match = String(query.data ?? '').match(/^history:([uc]):(-?\d+):([nu])$/);
+  const callbackData = String(query.data ?? '');
+  const sangmataMatch = callbackData.match(/^sangmata:([1-9][0-9]{0,19})$/);
+  if (sangmataMatch) {
+    const entityId = sangmataMatch[1];
+    try {
+      const snapshot = await db.select({
+        rawText: sangmataHistory.rawText,
+        namesJson: sangmataHistory.namesJson,
+        usernamesJson: sangmataHistory.usernamesJson,
+        fetchedAt: sangmataHistory.fetchedAt
+      }).from(sangmataHistory)
+        .where(eq(sangmataHistory.entityId, entityId))
+        .orderBy(desc(sangmataHistory.fetchedAt), desc(sangmataHistory.id))
+        .limit(1).get();
+      if (!snapshot) {
+        await api.answerCallbackQuery({ callback_query_id: query.id, text: 'No saved SangMata result was found.', show_alert: true });
+        return;
+      }
+      let names = [];
+      let usernames = [];
+      try { names = JSON.parse(snapshot.namesJson); } catch {}
+      try { usernames = JSON.parse(snapshot.usernamesJson); } catch {}
+      if (!Array.isArray(names)) names = [];
+      if (!Array.isArray(usernames)) usernames = [];
+      const lines = [
+        '🕘 <b>SangMata History</b>',
+        '',
+        '<b>Telegram ID:</b> <code>' + esc(entityId) + '</code>',
+        '<b>Fetched:</b> ' + esc(formatDate(snapshot.fetchedAt)),
+        '',
+        '<b>Names (' + names.length + ')</b>',
+        ...(names.length ? names.slice(0, 60).map((value, index) => (index + 1) + '. ' + esc(value)) : ['No names returned']),
+        '',
+        '<b>Usernames (' + usernames.length + ')</b>',
+        ...(usernames.length ? usernames.slice(0, 60).map((value, index) => (index + 1) + '. ' + esc('@' + String(value).replace(/^@/, ''))) : ['No usernames returned']),
+        '',
+        '<b>Original SangMata response</b>',
+        '<pre>' + esc(String(snapshot.rawText).slice(0, 1500)) + '</pre>'
+      ];
+      const chatId = query.message?.chat?.id;
+      if (chatId) {
+        await api.sendMessage({
+          chat_id: chatId,
+          text: lines.join('\\n').slice(0, 3900),
+          parse_mode: 'HTML',
+          reply_to_message_id: query.message.message_id,
+          allow_sending_without_reply: true
+        });
+      }
+      await api.answerCallbackQuery({ callback_query_id: query.id });
+    } catch (error) {
+      console.error('SangMata history read failed:', String(error?.message ?? 'unknown error'));
+      await api.answerCallbackQuery({ callback_query_id: query.id, text: 'Could not load saved SangMata history.', show_alert: true });
+    }
+    return;
+  }
+
+  const match = callbackData.match(/^history:([uc]):(-?\\d+):([nu])$/);
   if (!match) {
     await api.answerCallbackQuery({ callback_query_id: query.id, text: 'This button is invalid or expired.', show_alert: true });
     return;
