@@ -19,6 +19,7 @@ export default async function (query) {
   if (darkcamsMatch) {
     const field = darkcamsMatch[1];
     const entityId = darkcamsMatch[2];
+    await api.answerCallbackQuery({ callback_query_id: query.id, text: 'Fetching history...' });
     try {
       let snapshot = await db.select({
         rawText: accountNameHistory.rawText,
@@ -104,14 +105,16 @@ export default async function (query) {
           allow_sending_without_reply: true
         });
       }
-      await api.answerCallbackQuery({ callback_query_id: query.id });
     } catch (error) {
       console.error('DARKC4MSHOW history lookup failed:', String(error?.message ?? 'unknown error'));
-      await api.answerCallbackQuery({
-        callback_query_id: query.id,
-        text: String(error?.message ?? 'Could not load DARKC4MSHOW history.').slice(0, 190),
-        show_alert: true
-      });
+      if (query.message?.chat?.id) {
+        await api.sendMessage({
+          chat_id: query.message.chat.id,
+          text: '❌ Could not load history: ' + String(error?.message ?? 'DARKC4MSHOW request failed.').slice(0, 700),
+          reply_to_message_id: query.message.message_id,
+          allow_sending_without_reply: true
+        });
+      }
     }
     return;
   }
