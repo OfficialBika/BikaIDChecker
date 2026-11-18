@@ -374,6 +374,7 @@ async function lookupChat(chatId, username, statusMessage = null) {
       await finishSearching(statusMessage, chatId, { kind: profile.kind, name: profile.name, username: profile.username, id: profile.id });
     } catch (resolverError) {
       console.warn('MTProto username lookup failed:', String(resolverError?.message ?? 'unknown error'));
+      if (statusMessage?.message_id) { try { await api.deleteMessage({ chat_id: chatId, message_id: statusMessage.message_id }); } catch {} }
       await reply(chatId, '❌ Could not resolve ' + username + '. Resolver error: ' + String(resolverError?.message ?? 'unknown error').slice(0, 220));
     }
   }
