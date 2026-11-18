@@ -21,7 +21,7 @@ A proprietary Telegram Serverless bot for looking up Telegram IDs from informati
 - Standard Unicode emoji do not have Telegram custom emoji IDs.
 
 ## Name and username history
-The bot records the names and usernames it actually observes when a user, group, supergroup, or channel is looked up/shared/forwarded. Each result can show **Old Names** and **Old Usernames** inline buttons; pressing a button displays up to ten previous distinct values, newest first. History starts when the bot first observes an entity — Telegram does not provide historical profile names/usernames, so earlier changes cannot be backfilled. Current values are excluded from the old-value list. The optional SangMata lookup uses the authorized Telegram user-account session hosted by the Render resolver to send `allhistory <user_id>` to `@SangMata_BOT` in a private chat. The resolver returns the original response plus best-effort extracted name and username lists. BikaIDChecker saves the latest five snapshots per user in its own database and displays the saved result from the SangMata History button. SangMata history is only available when SangMata has records and the account is permitted to access them.
+For User lookups, BikaIDChecker first asks the Render MTProto resolver to query `@DARKC4MSHOW_BOT` and displays the returned Stats page. Only when that Stats page is captured with its `Names` button do the **Username History** and **Name History** buttons appear. Pressing either button reuses the captured Stats message, clicks `Names` through the authorized user session, and displays the corresponding dated list. The resolver handles both new replies and edited bot messages. The parsed Names-page snapshot is stored separately in the `account_name_history` table; legacy SangMata records are not used for DARKC4MSHOW results. Other DARKC4MSHOW sections (Groups, Channels, Messages, Friends, Gifts, and so on) are not queried.
 
 ## MTProto resolver
 
@@ -50,7 +50,7 @@ Private chats/groups/channels can only be inspected when Telegram provides acces
    ```
 4. Test with `npx tgcloud run handlers/message '{ chat: { id: 1, type: "private" }, from: { id: 2, first_name: "Test" }, text: "/start" }'`.
 
-Deploy the schema and handlers with `npx tgcloud push`, then run `npx tgcloud migrate` to create the resolver configuration and SangMata history tables (as well as any other pending schema changes).
+Deploy the schema and handlers with `npx tgcloud push`, then run `npx tgcloud migrate` to create the resolver configuration and DARKC4MSHOW account-name history tables (as well as any other pending schema changes).
 
 ## License and source access
 All rights reserved. No permission is granted to use, copy, modify, redistribute, sublicense, publish, or create derivative works without prior written permission. See [LICENSE](LICENSE).
