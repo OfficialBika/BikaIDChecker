@@ -5,6 +5,7 @@ import hmac
 import logging
 import os
 import re
+import time
 from contextlib import asynccontextmanager
 from typing import Any
 from urllib.parse import urlparse
@@ -250,7 +251,7 @@ async def sangmata_history(payload: SangMataHistoryRequest) -> dict[str, Any]:
             "ok": True,
             "source": "SangMata_BOT",
             "user_id": payload.user_id,
-            "fetched_at": int(__import__("time").time()),
+            "fetched_at": int(time.time()),
             "has_history": bool(parsed["names"] or parsed["usernames"]),
             **parsed,
         }
