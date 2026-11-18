@@ -1,7 +1,7 @@
 import { api, fetch } from 'sdk';
 import { db } from 'sdk/db';
 import { and, desc, eq } from 'sdk/db';
-import { entityHistory, resolverConfig, sangmataHistory } from '../schema.js';
+import { entityHistory, resolverConfig, accountNameHistory } from '../schema.js';
 
 function esc(value) {
   return String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
@@ -21,13 +21,13 @@ export default async function (query) {
     const entityId = darkcamsMatch[2];
     try {
       let snapshot = await db.select({
-        rawText: sangmataHistory.rawText,
-        namesJson: sangmataHistory.namesJson,
-        usernamesJson: sangmataHistory.usernamesJson,
-        fetchedAt: sangmataHistory.fetchedAt
-      }).from(sangmataHistory)
-        .where(eq(sangmataHistory.entityId, entityId))
-        .orderBy(desc(sangmataHistory.fetchedAt), desc(sangmataHistory.id))
+        rawText: accountNameHistory.rawText,
+        namesJson: accountNameHistory.namesJson,
+        usernamesJson: accountNameHistory.usernamesJson,
+        fetchedAt: accountNameHistory.fetchedAt
+      }).from(accountNameHistory)
+        .where(eq(accountNameHistory.entityId, entityId))
+        .orderBy(desc(accountNameHistory.fetchedAt), desc(accountNameHistory.id))
         .limit(1).get();
 
       // The first History button fetches both lists from DARKC4MSHOW.
@@ -48,18 +48,18 @@ export default async function (query) {
         }
 
         const fetchedAt = Number(body.fetched_at) || Math.floor(Date.now() / 1000);
-        await db.insert(sangmataHistory).values({
+        await db.insert(accountNameHistory).values({
           entityId,
           rawText: String(body.raw_text ?? ''),
           namesJson: JSON.stringify(Array.isArray(body.names) ? body.names : []),
           usernamesJson: JSON.stringify(Array.isArray(body.usernames) ? body.usernames : []),
           fetchedAt
         }).run();
-        const savedRows = await db.select({ id: sangmataHistory.id })
-          .from(sangmataHistory).where(eq(sangmataHistory.entityId, entityId))
-          .orderBy(desc(sangmataHistory.fetchedAt), desc(sangmataHistory.id)).all();
+        const savedRows = await db.select({ id: accountNameHistory.id })
+          .from(accountNameHistory).where(eq(accountNameHistory.entityId, entityId))
+          .orderBy(desc(accountNameHistory.fetchedAt), desc(accountNameHistory.id)).all();
         for (const row of savedRows.slice(5)) {
-          await db.delete(sangmataHistory).where(eq(sangmataHistory.id, row.id)).run();
+          await db.delete(accountNameHistory).where(eq(accountNameHistory.id, row.id)).run();
         }
         snapshot = {
           rawText: String(body.raw_text ?? ''),
