@@ -110,7 +110,7 @@ export default async function (query) {
       if (query.message?.chat?.id) {
         await api.sendMessage({
           chat_id: query.message.chat.id,
-          text: '❌ Could not load history: ' + String(error?.message ?? 'DARKC4MSHOW request failed.').slice(0, 700),
+          text: '❌ Could not load history right now. Please try again shortly.',
           reply_to_message_id: query.message.message_id,
           allow_sending_without_reply: true
         });
