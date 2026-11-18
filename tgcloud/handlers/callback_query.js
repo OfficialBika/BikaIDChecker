@@ -17,7 +17,8 @@ export default async function (query) {
   const callbackData = String(query.data ?? '');
   const sangmataMatch = callbackData.match(/^sangmata:(username|name):([1-9][0-9]{0,19})$/);
   if (sangmataMatch) {
-    const field = sangmataMatch[1];\n    const entityId = sangmataMatch[2];
+    const field = sangmataMatch[1];
+    const entityId = sangmataMatch[2];
     try {
       const snapshot = await db.select({
         rawText: sangmataHistory.rawText,
