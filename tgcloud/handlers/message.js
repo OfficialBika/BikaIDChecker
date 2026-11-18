@@ -271,6 +271,19 @@ async function historyButton(entityType, entityId, field, label) {
     : null;
 }
 
+function formatStatsText(value) {
+  return String(value ?? '').split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(Boolean)
+    .map(line => {
+      const match = line.match(/^([^:]{2,40}:)\s*(.*)$/);
+      return match
+        ? '<b>' + esc(match[1]) + '</b> ' + esc(match[2])
+        : esc(line);
+    })
+    .join('\n');
+}
+
 async function result(chatId, data) {
   await recordHistory(data);
   let statsText = null;
@@ -288,7 +301,7 @@ async function result(chatId, data) {
 
   const statsReady = Boolean(statsText);
   const lines = statsReady
-    ? ['📊 <b>DARKC4MSHOW Stats</b>', '', '<pre>' + esc(statsText.slice(0, 3300)) + '</pre>']
+    ? ['📊 <b>Account Statistics</b>', '', formatStatsText(statsText).slice(0, 3300)]
     : [
         '🔎 <b>Telegram ID Information</b>',
         '',
@@ -302,12 +315,12 @@ async function result(chatId, data) {
             : 'Estimate unavailable for this ID range')
           : null,
         data.kind === 'User' && statsError
-          ? '⚠️ DARKC4MSHOW Stats unavailable: ' + esc(statsError.slice(0, 260))
+          ? '⚠️ Statistics are temporarily unavailable: ' + esc(statsError.slice(0, 260))
           : null
       ].filter(Boolean);
 
   const keyboard = [[{ text: '📋 Copy ID', copy_text: { text: String(data.id) } }]];
-  // Do not offer History until the real DARKC4MSHOW Stats page was captured.
+  // Show history controls only after a valid statistics page was captured.
   if (statsReady) {
     keyboard.push(
       [{
