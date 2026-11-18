@@ -328,7 +328,7 @@ async function result(chatId, data) {
       [{ text: '📜 Name History', callback_data: 'sangmata:name:' + String(data.id), style: 'primary' }, customEmoji]
     );
   }
-  return reply(chatId, lines.join('\\n'), {
+  return reply(chatId, lines.join('\n'), {
     parse_mode: 'HTML',
     reply_markup: { inline_keyboard: keyboard }
   });
