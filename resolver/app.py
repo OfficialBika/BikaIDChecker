@@ -241,8 +241,8 @@ async def darkcams_stats(payload: DarkcamsNamesRequest) -> dict[str, Any]:
             async with client.conversation("DARKC4MSHOW_BOT", timeout=55, exclusive=True) as conversation:
                 await conversation.send_message(target)
                 stats_message = None
-                for _ in range(6):
-                    candidate = await conversation.get_response(timeout=35)
+                for _ in range(3):
+                    candidate = await conversation.get_response(timeout=20)
                     if _names_button_position(candidate) is not None:
                         stats_message = candidate
                         break
@@ -297,8 +297,8 @@ async def darkcams_names(payload: DarkcamsNamesRequest) -> dict[str, Any]:
                 button_position = None
                 # The bot can first send a "Looking for data..." placeholder.
                 # Wait for the actual Stats message containing the Names inline button.
-                for _ in range(6):
-                    candidate = await conversation.get_response(timeout=35)
+                for _ in range(3):
+                    candidate = await conversation.get_response(timeout=20)
                     position = _names_button_position(candidate)
                     if position is not None:
                         stats_message = candidate
@@ -312,7 +312,7 @@ async def darkcams_names(payload: DarkcamsNamesRequest) -> dict[str, Any]:
                     )
 
                 await stats_message.click(*button_position)
-                names_message = await conversation.get_response(timeout=35)
+                names_message = await conversation.get_response(timeout=25)
                 messages = [names_message]
 
                 # Collect any continuation messages if the Names page is split.
