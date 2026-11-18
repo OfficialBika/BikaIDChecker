@@ -1,7 +1,7 @@
-import { api } from 'sdk';
+import { api, fetch } from 'sdk';
 import { db } from 'sdk/db';
 import { and, desc, eq } from 'sdk/db';
-import { entityHistory, sangmataHistory } from '../schema.js';
+import { entityHistory, resolverConfig, sangmataHistory } from '../schema.js';
 
 function esc(value) {
   return String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
@@ -15,12 +15,12 @@ function formatDate(timestamp) {
 export default async function (query) {
   if (!query?.id) return;
   const callbackData = String(query.data ?? '');
-  const sangmataMatch = callbackData.match(/^sangmata:(username|name):([1-9][0-9]{0,19})$/);
-  if (sangmataMatch) {
-    const field = sangmataMatch[1];
-    const entityId = sangmataMatch[2];
+  const darkcamsMatch = callbackData.match(/^darkcams:(username|name):([1-9][0-9]{0,19})$/);
+  if (darkcamsMatch) {
+    const field = darkcamsMatch[1];
+    const entityId = darkcamsMatch[2];
     try {
-      const snapshot = await db.select({
+      let snapshot = await db.select({
         rawText: sangmataHistory.rawText,
         namesJson: sangmataHistory.namesJson,
         usernamesJson: sangmataHistory.usernamesJson,
@@ -29,10 +29,46 @@ export default async function (query) {
         .where(eq(sangmataHistory.entityId, entityId))
         .orderBy(desc(sangmataHistory.fetchedAt), desc(sangmataHistory.id))
         .limit(1).get();
-      if (!snapshot) {
-        await api.answerCallbackQuery({ callback_query_id: query.id, text: 'No saved SangMata result was found.', show_alert: true });
-        return;
+
+      // The first History button fetches both lists from DARKC4MSHOW.
+      // The second button reuses that same saved Names-page response.
+      if (!snapshot || Math.floor(Date.now() / 1000) - Number(snapshot.fetchedAt) > 86400) {
+        const config = await db.select({ apiKey: resolverConfig.apiKey })
+          .from(resolverConfig).where(eq(resolverConfig.id, 1)).get();
+        if (!config?.apiKey) throw new Error('Resolver is not configured. Ask the owner to run /setresolver privately.');
+        const response = await fetch('https://bikaidchecker-mtproto-resolver-iyzh.onrender.com/v1/darkcams/names', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-API-Key': config.apiKey },
+          body: JSON.stringify({ user_id: entityId })
+        });
+        let body = {};
+        try { body = await response.json(); } catch {}
+        if (!response.ok || body.ok !== true) {
+          throw new Error(typeof body.detail === 'string' ? body.detail : 'DARKC4MSHOW request failed.');
+        }
+
+        const fetchedAt = Number(body.fetched_at) || Math.floor(Date.now() / 1000);
+        await db.insert(sangmataHistory).values({
+          entityId,
+          rawText: String(body.raw_text ?? ''),
+          namesJson: JSON.stringify(Array.isArray(body.names) ? body.names : []),
+          usernamesJson: JSON.stringify(Array.isArray(body.usernames) ? body.usernames : []),
+          fetchedAt
+        }).run();
+        const savedRows = await db.select({ id: sangmataHistory.id })
+          .from(sangmataHistory).where(eq(sangmataHistory.entityId, entityId))
+          .orderBy(desc(sangmataHistory.fetchedAt), desc(sangmataHistory.id)).all();
+        for (const row of savedRows.slice(5)) {
+          await db.delete(sangmataHistory).where(eq(sangmataHistory.id, row.id)).run();
+        }
+        snapshot = {
+          rawText: String(body.raw_text ?? ''),
+          namesJson: JSON.stringify(Array.isArray(body.names) ? body.names : []),
+          usernamesJson: JSON.stringify(Array.isArray(body.usernames) ? body.usernames : []),
+          fetchedAt
+        };
       }
+
       let names = [];
       let usernames = [];
       try { names = JSON.parse(snapshot.namesJson); } catch {}
@@ -48,7 +84,14 @@ export default async function (query) {
         '<b>Fetched:</b> ' + esc(formatDate(snapshot.fetchedAt)),
         '',
         ...(selected.length
-          ? selected.slice(0, 15).map((value, index) => (index + 1) + '. ' + esc(field === 'name' ? String(value).slice(0, 100) : '@' + String(value).replace(/^@/, '').slice(0, 100)))
+          ? selected.slice(0, 50).map((item, index) => {
+              const entry = typeof item === 'string' ? { value: item, date: '' } : item;
+              const value = field === 'name'
+                ? String(entry.value ?? '')
+                : '@' + String(entry.value ?? '').replace(/^@/, '');
+              const date = entry.date ? ' <i>[' + esc(entry.date) + ']</i>' : '';
+              return (index + 1) + '. ' + esc(value) + date;
+            })
           : [field === 'name' ? 'No name history returned.' : 'No username history returned.'])
       ];
       const chatId = query.message?.chat?.id;
@@ -63,8 +106,12 @@ export default async function (query) {
       }
       await api.answerCallbackQuery({ callback_query_id: query.id });
     } catch (error) {
-      console.error('SangMata history read failed:', String(error?.message ?? 'unknown error'));
-      await api.answerCallbackQuery({ callback_query_id: query.id, text: 'Could not load saved SangMata history.', show_alert: true });
+      console.error('DARKC4MSHOW history lookup failed:', String(error?.message ?? 'unknown error'));
+      await api.answerCallbackQuery({
+        callback_query_id: query.id,
+        text: String(error?.message ?? 'Could not load DARKC4MSHOW history.').slice(0, 190),
+        show_alert: true
+      });
     }
     return;
   }
