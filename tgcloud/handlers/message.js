@@ -130,9 +130,9 @@ async function setResolverCommand(message, text) {
     await reply(chatId, '⛔ This setup command is available only to the bot owner in private chat.');
     return true;
   }
-  const match = text.match(/^\\/setresolver(?:@\\w+)?\\s+(\\S{24,512})$/i);
+  const match = text.match(/^\/setresolver(?:@\w+)?\s+(\S{24,512})$/i);
   if (!match) {
-    await reply(chatId, 'Usage: /setresolver YOUR_RENDER_RESOLVER_API_KEY\\nSend this command only in the private chat with this bot.');
+    await reply(chatId, 'Usage: /setresolver YOUR_RENDER_RESOLVER_API_KEY\nSend this command only in the private chat with this bot.');
     return true;
   }
   try {
@@ -460,7 +460,7 @@ export default async function (message) {
   if (await forwarded(message)) return;
 
   const text = String(message.text ?? '').trim();
-  if (/^\\/setresolver(?:@\\w+)?(?:\\s|$)/i.test(text)) {
+  if (/^\/setresolver(?:@\w+)?(?:\s|$)/i.test(text)) {
     await setResolverCommand(message, text);
     return;
   }
