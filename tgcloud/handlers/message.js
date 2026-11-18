@@ -1,8 +1,11 @@
 import { api } from 'sdk';
 import { db } from 'sdk/db';
 import { and, desc, eq } from 'sdk/db';
-import { entityHistory } from '../schema.js';
+import { entityHistory, resolverConfig, sangmataHistory } from '../schema.js';
 import { CREATION_DATE_SAMPLES } from '../lib/creation-date-samples.js';
+
+const OWNER_ID = '8251006975';
+const RESOLVER_BASE_URL = 'https://bikaidchecker-mtproto-resolver-iyzh.onrender.com';
 
 const HELP = [
   '🔎 BikaIDChecker',
@@ -69,6 +72,83 @@ function picker() {
 
 async function reply(chatId, text, extra = {}) {
   return api.sendMessage({ chat_id: chatId, text, ...extra });
+}
+
+async function saveResolverKey(apiKey) {
+  const existing = await db.select({ id: resolverConfig.id }).from(resolverConfig).where(eq(resolverConfig.id, 1)).get();
+  const updatedAt = Math.floor(Date.now() / 1000);
+  if (existing) {
+    await db.update(resolverConfig).set({ apiKey, updatedAt }).where(eq(resolverConfig.id, 1)).run();
+  } else {
+    await db.insert(resolverConfig).values({ id: 1, apiKey, updatedAt }).run();
+  }
+}
+
+async function resolverRequest(path, payload) {
+  const config = await db.select({ apiKey: resolverConfig.apiKey }).from(resolverConfig).where(eq(resolverConfig.id, 1)).get();
+  if (!config?.apiKey) throw new Error('Resolver is not configured. Ask the owner to run /setresolver privately.');
+  const response = await fetch(RESOLVER_BASE_URL + path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-API-Key': config.apiKey },
+    body: JSON.stringify(payload)
+  });
+  let body = {};
+  try { body = await response.json(); } catch {}
+  if (!response.ok || body.ok !== true) throw new Error(typeof body.detail === 'string' ? body.detail : 'Resolver request failed.');
+  return body;
+}
+
+async function saveSangmataSnapshot(entityId, data) {
+  const fetchedAt = Number(data.fetched_at) || Math.floor(Date.now() / 1000);
+  await db.insert(sangmataHistory).values({
+    entityId: String(entityId),
+    rawText: String(data.raw_text ?? ''),
+    namesJson: JSON.stringify(Array.isArray(data.names) ? data.names : []),
+    usernamesJson: JSON.stringify(Array.isArray(data.usernames) ? data.usernames : []),
+    fetchedAt
+  }).run();
+  const rows = await db.select({ id: sangmataHistory.id }).from(sangmataHistory)
+    .where(eq(sangmataHistory.entityId, String(entityId)))
+    .orderBy(desc(sangmataHistory.fetchedAt), desc(sangmataHistory.id)).all();
+  for (const row of rows.slice(5)) await db.delete(sangmataHistory).where(eq(sangmataHistory.id, row.id)).run();
+}
+
+async function fetchSangmata(entityId) {
+  try {
+    const data = await resolverRequest('/v1/sangmata/history', { user_id: String(entityId) });
+    await saveSangmataSnapshot(entityId, data);
+    return data;
+  } catch (error) {
+    console.warn('SangMata history lookup failed:', String(error?.message ?? 'unknown error'));
+    return null;
+  }
+}
+
+async function setResolverCommand(message, text) {
+  const chatId = message.chat.id;
+  if (message.chat.type !== 'private' || String(message.from?.id ?? '') !== OWNER_ID) {
+    await reply(chatId, '⛔ This setup command is available only to the bot owner in private chat.');
+    return true;
+  }
+  const match = text.match(/^\\/setresolver(?:@\\w+)?\\s+(\\S{24,512})$/i);
+  if (!match) {
+    await reply(chatId, 'Usage: /setresolver YOUR_RENDER_RESOLVER_API_KEY\\nSend this command only in the private chat with this bot.');
+    return true;
+  }
+  try {
+    await api.deleteMessage({ chat_id: chatId, message_id: message.message_id });
+  } catch {
+    await reply(chatId, '❌ Could not securely delete the setup message. Please try again in this private chat.');
+    return true;
+  }
+  try {
+    await saveResolverKey(match[1]);
+    await reply(chatId, '✅ Resolver API key saved. The setup message was deleted.');
+  } catch (error) {
+    console.error('Resolver configuration save failed:', String(error?.message ?? 'unknown error'));
+    await reply(chatId, '❌ Could not save resolver configuration. Please check the bot database and try again.');
+  }
+  return true;
 }
 
 function buildMonotonicSamples() {
@@ -207,6 +287,7 @@ async function historyButton(entityType, entityId, field, label) {
 
 async function result(chatId, data) {
   await recordHistory(data);
+  const sangmata = data.kind === 'User' ? await fetchSangmata(data.id) : null;
   const entityType = ['User', 'Bot'].includes(data.kind) ? 'user' : 'chat';
   const nameButton = await historyButton(entityType, data.id, 'name', '📜 Old Names');
   const usernameButton = await historyButton(entityType, data.id, 'username', '🔗 Old Usernames');
@@ -223,11 +304,15 @@ async function result(chatId, data) {
       ? '<b>Account created:</b> ' + (estimateAccountCreated(data.id)
         ? '≈ ' + esc(estimateAccountCreated(data.id)) + ' <i>(estimated)</i>'
         : 'Estimate unavailable for this ID range')
-      : null
+      : null,
+    sangmata
+      ? '<b>SangMata:</b> ' + (sangmata.has_history ? 'Historical records found' : 'No historical records returned')
+      : (data.kind === 'User' ? '<b>SangMata:</b> Lookup unavailable (resolver not configured or request failed)' : null)
   ].filter(Boolean);
 
   const keyboard = [[{ text: '📋 Copy ID', copy_text: { text: String(data.id) } }]];
   if (historyButtons.length) keyboard.push(historyButtons);
+  if (sangmata) keyboard.push([{ text: '🕘 SangMata History', callback_data: 'sangmata:' + String(data.id) }]);
 
   return reply(chatId, lines.join('\n'), {
     parse_mode: 'HTML',
@@ -246,8 +331,26 @@ async function lookupChat(chatId, username) {
       id: chat.id
     });
   } catch (error) {
-    console.warn('Public username lookup failed', username, error);
-    await reply(chatId, '❌ Could not resolve ' + username + '. Check that it is a public supergroup/channel username or public t.me link. Telegram Bot API cannot resolve a personal user or bot from a typed username; select them with Share user / Share bot instead. If this is a public group/channel, its exact username and the server log will help diagnose the failure.');
+    console.warn('Bot API username lookup failed; trying MTProto resolver:', username);
+    try {
+      const resolved = await resolverRequest('/v1/resolve', { username });
+      const profile = resolved.result;
+      await result(chatId, { kind: profile.kind, name: profile.name, username: profile.username, id: profile.id });
+    } catch (resolverError) {
+      console.warn('MTProto username lookup failed:', String(resolverError?.message ?? 'unknown error'));
+      await reply(chatId, '❌ Could not resolve ' + username + '. Confirm it is a public Telegram username and that the Render resolver is configured with /setresolver.');
+    }
+  }
+}
+
+async function lookupUserId(chatId, userId) {
+  try {
+    const resolved = await resolverRequest('/v1/resolve', { user_id: String(userId) });
+    const profile = resolved.result;
+    await result(chatId, { kind: profile.kind, name: profile.name, username: profile.username, id: profile.id });
+  } catch (error) {
+    console.warn('Numeric profile resolution unavailable; trying SangMata by ID.');
+    await result(chatId, { kind: 'User', name: 'Profile details unavailable', username: null, id: String(userId) });
   }
 }
 
@@ -357,6 +460,10 @@ export default async function (message) {
   if (await forwarded(message)) return;
 
   const text = String(message.text ?? '').trim();
+  if (/^\\/setresolver(?:@\\w+)?(?:\\s|$)/i.test(text)) {
+    await setResolverCommand(message, text);
+    return;
+  }
   if (text === '/start' || text.startsWith('/start@') || text === '/help' || text.startsWith('/help@')) {
     try {
       await api.setMyCommands({
@@ -392,11 +499,15 @@ export default async function (message) {
     await lookupChat(message.chat.id, username);
     return;
   }
+  if (/^[1-9][0-9]{0,19}$/.test(text)) {
+    await lookupUserId(message.chat.id, text);
+    return;
+  }
 
   if (text.startsWith('/')) {
     await reply(message.chat.id, 'Unknown command. Send /help for instructions.');
     return;
   }
 
-  await reply(message.chat.id, 'Send a public group/channel username, @username, t.me link, or Telegram resolve link. Telegram Bot API can resolve public supergroups/channels by username, but not arbitrary personal users or bots; use the share keyboard to select them. For custom emoji, send a Premium custom emoji or use /idemoji <id>.');
+  await reply(message.chat.id, 'Send a Telegram username, t.me link, numeric user ID, or use the share keyboard. Public usernames are resolved through Telegram Bot API and the MTProto resolver. User lookups also request available SangMata history. For custom emoji, send a Premium custom emoji or use /idemoji <id>.');
 }
