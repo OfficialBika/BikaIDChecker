@@ -1,4 +1,4 @@
-import { api } from 'sdk';
+import { api, fetch } from 'sdk';
 import { db } from 'sdk/db';
 import { and, desc, eq } from 'sdk/db';
 import { entityHistory, resolverConfig, sangmataHistory } from '../schema.js';
