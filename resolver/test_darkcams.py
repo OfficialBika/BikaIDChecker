@@ -40,3 +40,66 @@ def test_parse_darkcams_empty_names_page():
     assert result["names"] == []
     assert result["usernames"] == []
     assert result["has_history"] is False
+
+
+def test_stats_waiter_accepts_edited_placeholder():
+    import asyncio
+    from types import SimpleNamespace
+
+    from resolver.app import _wait_for_stats_message
+
+    placeholder = SimpleNamespace(id=10, message="Searching...", buttons=None)
+    stats = SimpleNamespace(
+        id=10,
+        message="Stats for target",
+        buttons=[[SimpleNamespace(text="🔗 Names")]],
+    )
+    sent = SimpleNamespace(id=9)
+
+    class FakeConversation:
+        async def get_response(self, message=None, timeout=None):
+            assert message.id == sent.id
+            return placeholder
+
+        async def get_edit(self, message=None, timeout=None):
+            assert message.id == placeholder.id
+            return stats
+
+    result = asyncio.run(_wait_for_stats_message(
+        FakeConversation(), sent, log_context="test"
+    ))
+    assert result.id == 10
+    assert result.message == "Stats for target"
+
+
+def test_names_waiter_accepts_edited_stats_message():
+    import asyncio
+    from types import SimpleNamespace
+
+    from resolver.app import _wait_for_names_page
+
+    stats = SimpleNamespace(
+        id=20,
+        message="Stats page",
+        buttons=[[SimpleNamespace(text="🔗 Names")]],
+    )
+    names = SimpleNamespace(
+        id=20,
+        message="""
+usernames:
+1. @example_name [10/27/2026]
+first name / last name:
+└ 2026-10-27 ➜ Example Name
+""",
+    )
+
+    class FakeConversation:
+        async def get_edit(self, message=None, timeout=None):
+            assert message.id == stats.id
+            return names
+
+    result = asyncio.run(_wait_for_names_page(FakeConversation(), stats))
+    parsed = parse_darkcams_names(result)
+    assert parsed["has_history"] is True
+    assert parsed["usernames"][0]["value"] == "@example_name"
+    assert parsed["names"][0]["value"] == "Example Name"
