@@ -5,7 +5,7 @@ import { entityHistory, resolverConfig, sangmataHistory } from '../schema.js';
 import { CREATION_DATE_SAMPLES } from '../lib/creation-date-samples.js';
 
 const OWNER_ID = '8251006975';
-const RESOLVER_BASE_URL = 'https://bikaidchecker-mtproto-resolver.onrender.com';
+const RESOLVER_BASE_URL = 'https://bikaidchecker-mtproto-resolver-iyzh.onrender.com';
 
 const HELP = [
   '🔎 BikaIDChecker',
