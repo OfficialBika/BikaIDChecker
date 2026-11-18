@@ -109,31 +109,6 @@ async function resolverRequest(path, payload) {
   return body;
 }
 
-async function saveSangmataSnapshot(entityId, data) {
-  const fetchedAt = Number(data.fetched_at) || Math.floor(Date.now() / 1000);
-  await db.insert(sangmataHistory).values({
-    entityId: String(entityId),
-    rawText: String(data.raw_text ?? ''),
-    namesJson: JSON.stringify(Array.isArray(data.names) ? data.names : []),
-    usernamesJson: JSON.stringify(Array.isArray(data.usernames) ? data.usernames : []),
-    fetchedAt
-  }).run();
-  const rows = await db.select({ id: sangmataHistory.id }).from(sangmataHistory)
-    .where(eq(sangmataHistory.entityId, String(entityId)))
-    .orderBy(desc(sangmataHistory.fetchedAt), desc(sangmataHistory.id)).all();
-  for (const row of rows.slice(5)) await db.delete(sangmataHistory).where(eq(sangmataHistory.id, row.id)).run();
-}
-
-async function fetchSangmata(entityId) {
-  try {
-    const data = await resolverRequest('/v1/sangmata/history', { user_id: String(entityId) });
-    await saveSangmataSnapshot(entityId, data);
-    return data;
-  } catch (error) {
-    console.warn('SangMata history lookup failed:', String(error?.message ?? 'unknown error'));
-    return null;
-  }
-}
 
 async function setResolverCommand(message, text) {
   const chatId = message.chat.id;
@@ -298,10 +273,7 @@ async function historyButton(entityType, entityId, field, label) {
 
 async function result(chatId, data) {
   await recordHistory(data);
-  const sangmata = data.kind === 'User' ? await fetchSangmata(data.id) : null;
   const entityType = ['User', 'Bot'].includes(data.kind) ? 'user' : 'chat';
-  const nameButton = await historyButton(entityType, data.id, 'name', '📜 Name History');
-  const usernameButton = await historyButton(entityType, data.id, 'username', '🔗 Username History');
 
   const lines = [
     '🔎 <b>Telegram ID Information</b>',
@@ -314,24 +286,21 @@ async function result(chatId, data) {
       ? '<b>Account created:</b> ' + (estimateAccountCreated(data.id)
         ? '≈ ' + esc(estimateAccountCreated(data.id)) + ' <i>(estimated)</i>'
         : 'Estimate unavailable for this ID range')
-      : null,
-    sangmata
-      ? '<b>SangMata:</b> ' + (sangmata.has_history ? 'Historical records found' : 'No historical records returned')
-      : (data.kind === 'User' ? '<b>SangMata:</b> Lookup unavailable (resolver request failed)' : null)
+      : null
   ].filter(Boolean);
 
   const keyboard = [[{ text: '📋 Copy ID', copy_text: { text: String(data.id) } }]];
-  if (sangmata) {
+  if (data.kind === 'User') {
     keyboard.push(
       [{
         text: '🔗 Username History',
-        callback_data: 'sangmata:username:' + String(data.id),
+        callback_data: 'darkcams:username:' + String(data.id),
         style: 'primary',
         icon_custom_emoji_id: '5807468998840814853'
       }],
       [{
         text: '📜 Name History',
-        callback_data: 'sangmata:name:' + String(data.id),
+        callback_data: 'darkcams:name:' + String(data.id),
         style: 'primary',
         icon_custom_emoji_id: '5807468998840814853'
       }]
