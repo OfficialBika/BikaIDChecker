@@ -273,21 +273,32 @@ async function historyButton(entityType, entityId, field, label) {
 
 async function result(chatId, data) {
   await recordHistory(data);
-  const entityType = ['User', 'Bot'].includes(data.kind) ? 'user' : 'chat';
+  let statsText = null;
+  if (data.kind === 'User') {
+    try {
+      const stats = await resolverRequest('/v1/darkcams/stats', { user_id: String(data.id) });
+      statsText = String(stats.stats_text ?? '').trim();
+    } catch (error) {
+      console.warn('DARKC4MSHOW Stats page unavailable:', String(error?.message ?? 'unknown error'));
+    }
+  }
 
-  const lines = [
-    '🔎 <b>Telegram ID Information</b>',
-    '',
-    '<b>Type:</b> ' + esc(data.kind),
-    '<b>Name:</b> ' + esc(data.name || 'Not provided'),
-    data.username ? '<b>Username:</b> ' + esc(data.username.startsWith('@') ? data.username : '@' + data.username) : null,
-    '<b>ID:</b> <code>' + esc(data.id) + '</code>',
-    data.kind === 'User'
-      ? '<b>Account created:</b> ' + (estimateAccountCreated(data.id)
-        ? '≈ ' + esc(estimateAccountCreated(data.id)) + ' <i>(estimated)</i>'
-        : 'Estimate unavailable for this ID range')
-      : null
-  ].filter(Boolean);
+  const lines = statsText
+    ? ['📊 <b>Stats</b>', '', '<pre>' + esc(statsText.slice(0, 3300)) + '</pre>']
+    : [
+        '🔎 <b>Telegram ID Information</b>',
+        '',
+        '<b>Type:</b> ' + esc(data.kind),
+        '<b>Name:</b> ' + esc(data.name || 'Not provided'),
+        data.username ? '<b>Username:</b> ' + esc(data.username.startsWith('@') ? data.username : '@' + data.username) : null,
+        '<b>ID:</b> <code>' + esc(data.id) + '</code>',
+        data.kind === 'User'
+          ? '<b>Account created:</b> ' + (estimateAccountCreated(data.id)
+            ? '≈ ' + esc(estimateAccountCreated(data.id)) + ' <i>(estimated)</i>'
+            : 'Estimate unavailable for this ID range')
+          : null,
+        data.kind === 'User' ? '⚠️ DARKC4MSHOW Stats page is unavailable. History buttons will retry when pressed.' : null
+      ].filter(Boolean);
 
   const keyboard = [[{ text: '📋 Copy ID', copy_text: { text: String(data.id) } }]];
   if (data.kind === 'User') {
