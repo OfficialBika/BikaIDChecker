@@ -1,7 +1,7 @@
 import { api, fetch } from 'sdk';
 import { db } from 'sdk/db';
 import { and, desc, eq } from 'sdk/db';
-import { entityHistory, resolverConfig, accountNameHistory } from '../schema.js';
+import { entityHistory, resolverConfig } from '../schema.js';
 import { CREATION_DATE_SAMPLES } from '../lib/creation-date-samples.js';
 
 const OWNER_ID = '8251006975';
