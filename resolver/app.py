@@ -306,7 +306,7 @@ async def _wait_for_names_page(conversation: Any, stats_message: Any) -> list[An
         logger.info("DARKC4MSHOW Names click did not edit the Stats message")
 
     try:
-        response = await conversation.get_response(timeout=10)
+        response = await conversation.get_response(message=stats_message, timeout=10)
         messages.append(response)
         parsed = parse_darkcams_names(messages)
         logger.info(
