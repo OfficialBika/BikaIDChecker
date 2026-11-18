@@ -57,7 +57,7 @@ export default async function (query) {
       if (chatId) {
         await api.sendMessage({
           chat_id: chatId,
-          text: lines.join('\\n').slice(0, 3900),
+          text: lines.join('\n').slice(0, 3900),
           parse_mode: 'HTML',
           reply_to_message_id: query.message.message_id,
           allow_sending_without_reply: true
@@ -71,7 +71,7 @@ export default async function (query) {
     return;
   }
 
-  const match = callbackData.match(/^history:([uc]):(-?\\d+):([nu])$/);
+  const match = callbackData.match(/^history:([uc]):(-?\d+):([nu])$/);
   if (!match) {
     await api.answerCallbackQuery({ callback_query_id: query.id, text: 'This button is invalid or expired.', show_alert: true });
     return;
