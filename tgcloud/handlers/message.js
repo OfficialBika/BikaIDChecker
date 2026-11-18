@@ -491,10 +491,54 @@ async function idToEmoji(chatId, customEmojiId) {
 export default async function (message) {
   if (!message?.chat?.id) return;
 
-  if (await sharedUsers(message)) return;
-  if (await sharedChat(message)) return;
+  if (message.users_shared?.users?.length) {
+    const statusMessage = await sendSearching(message.chat.id);
+    for (const user of message.users_shared.users) {
+      await finishSearching(statusMessage, message.chat.id, {
+        kind: user.is_bot || message.users_shared.request_id === 8102 ? 'Bot' : 'User',
+        name: [user.first_name, user.last_name].filter(Boolean).join(' ') || 'Shared account',
+        username: user.username,
+        id: user.user_id
+      });
+    }
+    return;
+  }
+  if (message.chat_shared?.chat_id) {
+    const statusMessage = await sendSearching(message.chat.id);
+    const chat = message.chat_shared;
+    await finishSearching(statusMessage, message.chat.id, {
+      kind: 'Group / Channel', name: chat.title || 'Shared chat',
+      username: chat.username, id: chat.chat_id
+    });
+    return;
+  }
   if (await emojiToId(message)) return;
-  if (await forwarded(message)) return;
+  if (message.forward_origin) {
+    const origin = message.forward_origin;
+    const statusMessage = await sendSearching(message.chat.id);
+    if (origin.type === 'user' && origin.sender_user) {
+      const user = origin.sender_user;
+      await finishSearching(statusMessage, message.chat.id, { kind: user.is_bot ? 'Bot' : 'User', name: [user.first_name, user.last_name].filter(Boolean).join(' '), username: user.username, id: user.id });
+      return;
+    }
+    if (origin.type === 'chat' && origin.sender_chat) {
+      const chat = origin.sender_chat;
+      await finishSearching(statusMessage, message.chat.id, { kind: 'Group', name: chat.title, username: chat.username, id: chat.id });
+      return;
+    }
+    if (origin.type === 'channel' && origin.chat) {
+      const chat = origin.chat;
+      await finishSearching(statusMessage, message.chat.id, { kind: 'Channel', name: chat.title, username: chat.username, id: chat.id });
+      return;
+    }
+    if (origin.type === 'hidden_user') {
+      if (statusMessage?.message_id) { try { await api.deleteMessage({ chat_id: message.chat.id, message_id: statusMessage.message_id }); } catch {} }
+      await reply(message.chat.id, '⚠️ This forward hides the original sender. Telegram does not provide that user’s ID.');
+      return;
+    }
+    if (statusMessage?.message_id) { try { await api.deleteMessage({ chat_id: message.chat.id, message_id: statusMessage.message_id }); } catch {} }
+    return;
+  }
 
   const text = String(message.text ?? '').trim();
   if (/^\/setresolver(?:@\w+)?(?:\s|$)/i.test(text)) {
