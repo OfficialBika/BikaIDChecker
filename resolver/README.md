@@ -19,11 +19,13 @@ A small, private-by-key HTTP service used by the Telegram Serverless bot to reso
 
 Successful `/v1/resolve` responses include only public peer metadata needed by BikaIDChecker: ID, type, display name, username, and selected public flags. Phone numbers, access hashes, session data, and private profile fields are never returned.
 
-- `POST /v1/sangmata/history` — requires `X-API-Key` and accepts `{"user_id":"123456789"}`.
-  The Render-hosted Telethon **user account** sends `allhistory <user_id>` in a private chat with `@SangMata_BOT`, collects its reply messages, and returns the raw response plus best-effort `names` and `usernames` extraction.
-  This is a user-account DM, not bot-to-bot messaging. The raw response is included so format changes do not silently discard information.
+- `POST /v1/darkcams/names` — requires `X-API-Key` and accepts exactly one of:
+  - `{"username":"@publicusername"}`
+  - `{"user_id":"123456789"}`
 
-Before using this endpoint, open `@SangMata_BOT` once with the configured account. The target account must be eligible to access SangMata history; private/hidden history cannot be bypassed. SangMata may change its reply format or rate-limit requests. The resolver serializes requests and reports timeouts/rate limits rather than fabricating results.
+  The Render-hosted Telethon **user account** opens `@DARKC4MSHOW_BOT`, sends the target username or numeric ID, waits for the Stats response, locates and clicks its `Names` inline button, then parses only the dated username and first-name/last-name history from the Names response. Groups, channels, messages, friends, gifts, and other Stats menu sections are not queried.
+
+  Before using this endpoint, open `@DARKC4MSHOW_BOT` once with the configured account and confirm that account can access its Stats and Names pages. The bot may require its own access, credits, or payment. The resolver does not bypass those requirements. Requests are serialized because one Telegram user session is shared by all lookups.
 
 ## Required Render environment variables
 
