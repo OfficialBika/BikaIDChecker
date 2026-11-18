@@ -350,7 +350,7 @@ async function lookupUserId(chatId, userId) {
     await result(chatId, { kind: profile.kind, name: profile.name, username: profile.username, id: profile.id });
   } catch (error) {
     console.warn('Numeric profile resolution unavailable; trying SangMata by ID.');
-    await result(chatId, { kind: 'User', name: 'Profile details unavailable', username: null, id: String(userId) });
+    await result(chatId, { kind: 'User', name: null, username: null, id: String(userId) });
   }
 }
 
