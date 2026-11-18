@@ -274,46 +274,53 @@ async def _wait_for_stats_message(conversation: Any, sent_message: Any, *, log_c
 
 
 async def _wait_for_names_page(conversation: Any, stats_message: Any) -> list[Any]:
-    """The Names button may edit the Stats message or send a separate reply."""
-    messages: list[Any] = []
-    try:
-        edited = await conversation.get_edit(message=stats_message, timeout=8)
-        messages.append(edited)
-        parsed = parse_darkcams_names(messages)
-        logger.info(
-            "DARKC4MSHOW Names edit received message_id=%s chars=%s parsed=%s",
-            getattr(edited, "id", None),
-            len(str(getattr(edited, "message", "") or "")),
-            parsed["has_history"],
-        )
-        if parsed["has_history"]:
-            return messages
-    except asyncio.TimeoutError:
-        logger.info("DARKC4MSHOW Names click did not edit the Stats message")
+    """Poll the bot chat after clicking Names; the bot may edit Stats or send a new message."""
+    del conversation
+    entity = "DARKC4MSHOW_BOT"
+    stats_id = int(getattr(stats_message, "id", 0) or 0)
+    original_text = str(getattr(stats_message, "message", "") or "").strip()
+    deadline = time.monotonic() + 24
+    last_candidate: list[Any] = []
 
-    try:
-        response = await conversation.get_response(message=stats_message, timeout=8)
-        messages.append(response)
-        parsed = parse_darkcams_names(messages)
-        logger.info(
-            "DARKC4MSHOW Names response received message_id=%s chars=%s parsed=%s",
-            getattr(response, "id", None),
-            len(str(getattr(response, "message", "") or "")),
-            parsed["has_history"],
-        )
-        if parsed["has_history"]:
-            return messages
-    except asyncio.TimeoutError:
-        logger.info("DARKC4MSHOW Names click produced no separate response")
-
-    # If the bot used a placeholder, the Names page may be a later edit.
-    if messages:
+    while time.monotonic() < deadline:
         try:
-            edited = await conversation.get_edit(message=messages[-1], timeout=3)
-            messages.append(edited)
-        except asyncio.TimeoutError:
-            pass
-    return messages
+            recent = await client.get_messages(entity, limit=20)  # type: ignore[union-attr]
+        except Exception:
+            logger.exception("DARKC4MSHOW Names polling failed")
+            recent = []
+
+        candidates: list[Any] = []
+        for item in reversed(list(recent or [])):
+            message_id = int(getattr(item, "id", 0) or 0)
+            if getattr(item, "out", False):
+                continue
+            body = str(getattr(item, "message", "") or "").strip()
+            if not body:
+                continue
+            if message_id > stats_id or (message_id == stats_id and body != original_text):
+                candidates.append(item)
+
+        if candidates:
+            last_candidate = candidates
+            parsed = parse_darkcams_names(candidates)
+            logger.info(
+                "DARKC4MSHOW Names poll observed candidates=%s parsed=%s",
+                len(candidates), parsed["has_history"]
+            )
+            if parsed["has_history"]:
+                return candidates
+
+        await asyncio.sleep(1)
+
+    if last_candidate:
+        logger.warning(
+            "DARKC4MSHOW Names messages received but no dated history parsed (chars=%s)",
+            sum(len(str(getattr(item, "message", "") or "")) for item in last_candidate)
+        )
+        return last_candidate
+
+    logger.warning("DARKC4MSHOW Names click produced no new or edited message")
+    return []
 
 
 async def _cached_stats_message(user_id: str) -> Any | None:
