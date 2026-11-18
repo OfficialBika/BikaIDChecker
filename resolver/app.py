@@ -230,7 +230,7 @@ def _names_button_position(message: Any) -> tuple[int, int] | None:
 
 async def _wait_for_stats_message(conversation: Any, sent_message: Any, *, log_context: str) -> Any:
     """Accept either a new Stats reply or a bot-edited loading message."""
-    candidate = await conversation.get_response(message=sent_message, timeout=10)
+    candidate = await conversation.get_response(message=sent_message, timeout=8)
     position = _names_button_position(candidate)
     logger.info(
         "%s received first reply message_id=%s chars=%s names_button=%s",
@@ -245,7 +245,7 @@ async def _wait_for_stats_message(conversation: Any, sent_message: Any, *, log_c
     # DARKC4MSHOW can send a placeholder first and edit that same message
     # into the Stats page. get_response() alone cannot observe that edit.
     try:
-        edited = await conversation.get_edit(message=candidate, timeout=9)
+        edited = await conversation.get_edit(message=candidate, timeout=6)
         position = _names_button_position(edited)
         logger.info(
             "%s received edited reply message_id=%s chars=%s names_button=%s",
@@ -262,7 +262,7 @@ async def _wait_for_stats_message(conversation: Any, sent_message: Any, *, log_c
 
     # Some bot versions send a separate Stats message after their placeholder.
     try:
-        followup = await conversation.get_response(message=sent_message, timeout=5)
+        followup = await conversation.get_response(message=sent_message, timeout=3)
         position = _names_button_position(followup)
         logger.info(
             "%s received follow-up message_id=%s chars=%s names_button=%s",
@@ -274,7 +274,7 @@ async def _wait_for_stats_message(conversation: Any, sent_message: Any, *, log_c
         if position is not None:
             return followup
         try:
-            edited_followup = await conversation.get_edit(message=followup, timeout=3)
+            edited_followup = await conversation.get_edit(message=followup, timeout=2)
             position = _names_button_position(edited_followup)
             logger.info("%s follow-up edit names_button=%s", log_context, bool(position))
             if position is not None:
@@ -291,7 +291,7 @@ async def _wait_for_names_page(conversation: Any, stats_message: Any) -> list[An
     """The Names button may edit the Stats message or send a separate reply."""
     messages: list[Any] = []
     try:
-        edited = await conversation.get_edit(message=stats_message, timeout=10)
+        edited = await conversation.get_edit(message=stats_message, timeout=8)
         messages.append(edited)
         parsed = parse_darkcams_names(messages)
         logger.info(
@@ -306,7 +306,7 @@ async def _wait_for_names_page(conversation: Any, stats_message: Any) -> list[An
         logger.info("DARKC4MSHOW Names click did not edit the Stats message")
 
     try:
-        response = await conversation.get_response(message=stats_message, timeout=10)
+        response = await conversation.get_response(message=stats_message, timeout=8)
         messages.append(response)
         parsed = parse_darkcams_names(messages)
         logger.info(
@@ -323,7 +323,7 @@ async def _wait_for_names_page(conversation: Any, stats_message: Any) -> list[An
     # If the bot used a placeholder, the Names page may be a later edit.
     if messages:
         try:
-            edited = await conversation.get_edit(message=messages[-1], timeout=5)
+            edited = await conversation.get_edit(message=messages[-1], timeout=3)
             messages.append(edited)
         except asyncio.TimeoutError:
             pass
