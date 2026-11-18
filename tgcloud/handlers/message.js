@@ -350,7 +350,7 @@ async function lookupChat(chatId, username) {
       await result(chatId, { kind: profile.kind, name: profile.name, username: profile.username, id: profile.id });
     } catch (resolverError) {
       console.warn('MTProto username lookup failed:', String(resolverError?.message ?? 'unknown error'));
-      await reply(chatId, '❌ Could not resolve ' + username + '. Confirm it is a public Telegram username and that the Render resolver is configured with /setresolver.');
+      await reply(chatId, '❌ Could not resolve ' + username + '. Resolver error: ' + String(resolverError?.message ?? 'unknown error').slice(0, 220));
     }
   }
 }
