@@ -227,6 +227,54 @@ def _names_button_position(message: Any) -> tuple[int, int] | None:
     return None
 
 
+@app.post("/v1/darkcams/stats", dependencies=[Depends(require_api_key)])
+async def darkcams_stats(payload: DarkcamsNamesRequest) -> dict[str, Any]:
+    """Fetch only the initial Stats page and its Names button from DARKC4MSHOW."""
+    if (payload.username is None) == (payload.user_id is None):
+        raise HTTPException(status_code=400, detail="Provide exactly one of username or user_id.")
+    if not client_ready or client is None:
+        raise HTTPException(status_code=503, detail="Resolver is not configured or Telegram session is unavailable.")
+
+    try:
+        target = "@" + normalize_username(payload.username) if payload.username is not None else str(payload.user_id)
+        async with client_lock:
+            async with client.conversation("DARKC4MSHOW_BOT", timeout=55, exclusive=True) as conversation:
+                await conversation.send_message(target)
+                stats_message = None
+                for _ in range(6):
+                    candidate = await conversation.get_response(timeout=35)
+                    if _names_button_position(candidate) is not None:
+                        stats_message = candidate
+                        break
+                if stats_message is None:
+                    raise HTTPException(
+                        status_code=502,
+                        detail="DARKC4MSHOW did not return its Stats page with a Names button. Check session access and bot requirements.",
+                    )
+        stats_text = str(getattr(stats_message, "message", "") or "").strip()
+        if not stats_text:
+            raise HTTPException(status_code=502, detail="DARKC4MSHOW Stats page was empty.")
+        return {
+            "ok": True,
+            "source": "DARKC4MSHOW_BOT",
+            "user_id": str(payload.user_id or ""),
+            "stats_text": stats_text[:3500],
+            "fetched_at": int(time.time()),
+        }
+    except HTTPException:
+        raise
+    except asyncio.TimeoutError as exc:
+        raise HTTPException(status_code=504, detail="Timed out waiting for @DARKC4MSHOW_BOT Stats page.") from exc
+    except FloodWaitError as exc:
+        raise HTTPException(status_code=429, detail="Telegram rate limit reached. Retry later.", headers={"Retry-After": str(max(1, int(exc.seconds)))}) from exc
+    except RPCError as exc:
+        logger.warning("DARKC4MSHOW Stats RPC failed: %s", type(exc).__name__)
+        raise HTTPException(status_code=502, detail="Could not access @DARKC4MSHOW_BOT from this Telegram session.") from exc
+    except Exception as exc:
+        logger.exception("DARKC4MSHOW Stats lookup failed.")
+        raise HTTPException(status_code=502, detail="DARKC4MSHOW Stats lookup failed temporarily.") from exc
+
+
 @app.post("/v1/darkcams/names", dependencies=[Depends(require_api_key)])
 async def darkcams_names(payload: DarkcamsNamesRequest) -> dict[str, Any]:
     """Ask the configured user session to open DARKC4MSHOW stats, press Names, and parse its reply."""
