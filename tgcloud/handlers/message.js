@@ -274,17 +274,21 @@ async function historyButton(entityType, entityId, field, label) {
 async function result(chatId, data) {
   await recordHistory(data);
   let statsText = null;
+  let statsError = null;
   if (data.kind === 'User') {
     try {
       const stats = await resolverRequest('/v1/darkcams/stats', { user_id: String(data.id) });
       statsText = String(stats.stats_text ?? '').trim();
+      if (!statsText) statsError = 'DARKC4MSHOW returned an empty Stats page.';
     } catch (error) {
-      console.warn('DARKC4MSHOW Stats page unavailable:', String(error?.message ?? 'unknown error'));
+      statsError = String(error?.message ?? 'DARKC4MSHOW request failed.');
+      console.warn('DARKC4MSHOW Stats page unavailable:', statsError);
     }
   }
 
-  const lines = statsText
-    ? ['📊 <b>Stats</b>', '', '<pre>' + esc(statsText.slice(0, 3300)) + '</pre>']
+  const statsReady = Boolean(statsText);
+  const lines = statsReady
+    ? ['📊 <b>DARKC4MSHOW Stats</b>', '', '<pre>' + esc(statsText.slice(0, 3300)) + '</pre>']
     : [
         '🔎 <b>Telegram ID Information</b>',
         '',
@@ -297,11 +301,14 @@ async function result(chatId, data) {
             ? '≈ ' + esc(estimateAccountCreated(data.id)) + ' <i>(estimated)</i>'
             : 'Estimate unavailable for this ID range')
           : null,
-        data.kind === 'User' ? '⚠️ DARKC4MSHOW Stats page is unavailable. History buttons will retry when pressed.' : null
+        data.kind === 'User' && statsError
+          ? '⚠️ DARKC4MSHOW Stats unavailable: ' + esc(statsError.slice(0, 260))
+          : null
       ].filter(Boolean);
 
   const keyboard = [[{ text: '📋 Copy ID', copy_text: { text: String(data.id) } }]];
-  if (data.kind === 'User') {
+  // Do not offer History until the real DARKC4MSHOW Stats page was captured.
+  if (statsReady) {
     keyboard.push(
       [{
         text: '🔗 Username History',
