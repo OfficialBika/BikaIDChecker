@@ -85,11 +85,11 @@ export default async function (query) {
         '<b>Fetched:</b> ' + esc(formatDate(snapshot.fetchedAt)),
         '',
         ...(selected.length
-          ? selected.slice(0, 50).map((item, index) => {
+          ? selected.slice(0, 30).map((item, index) => {
               const entry = typeof item === 'string' ? { value: item, date: '' } : item;
-              const value = field === 'name'
+              const value = (field === 'name'
                 ? String(entry.value ?? '')
-                : '@' + String(entry.value ?? '').replace(/^@/, '');
+                : '@' + String(entry.value ?? '').replace(/^@/, '')).slice(0, 100);
               const date = entry.date ? ' <i>[' + esc(entry.date) + ']</i>' : '';
               return (index + 1) + '. ' + esc(value) + date;
             })
