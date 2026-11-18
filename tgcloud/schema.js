@@ -18,7 +18,7 @@ export const resolverConfig = table('resolver_config', {
   updatedAt: integer('updated_at').notNull()
 });
 
-export const accountNameHistory = table('sangmata_history', {
+export const accountNameHistory = table('account_name_history', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   entityId: text('entity_id').notNull(),
   rawText: text('raw_text').notNull(),
@@ -26,5 +26,5 @@ export const accountNameHistory = table('sangmata_history', {
   usernamesJson: text('usernames_json').notNull(),
   fetchedAt: integer('fetched_at').notNull()
 }, (t) => ({
-  lookupIdx: index('idx_sangmata_history_lookup').on(t.entityId, t.fetchedAt)
+  lookupIdx: index('idx_account_name_history_lookup').on(t.entityId, t.fetchedAt)
 }));
