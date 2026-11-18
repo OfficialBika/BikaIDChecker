@@ -16,6 +16,8 @@ from telethon.errors import FloodWaitError, RPCError
 from telethon.sessions import SQLiteSession, StringSession
 from telethon.tl.types import Channel, Chat, User
 
+from resolver.sangmata import parse_sangmata_messages
+
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 logger = logging.getLogger("bikaidchecker.resolver")
 
@@ -152,6 +154,11 @@ class ResolveRequest(BaseModel):
     user_id: str | None = Field(default=None, max_length=20)
 
 
+class SangMataHistoryRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    user_id: str = Field(min_length=1, max_length=20, pattern=r"^[1-9][0-9]{0,19}$")
+
+
 async def require_api_key(x_api_key: str | None = Header(default=None)) -> None:
     expected = os.getenv("RESOLVER_API_KEY", "")
     if not expected or not x_api_key or not hmac.compare_digest(x_api_key, expected):
@@ -205,3 +212,67 @@ async def resolve(payload: ResolveRequest, request: Request) -> dict[str, Any]:
     except Exception as exc:
         logger.exception("Unexpected resolver error.")
         raise HTTPException(status_code=502, detail="Telegram lookup failed temporarily.") from exc
+
+
+
+@app.post("/v1/sangmata/history", dependencies=[Depends(require_api_key)])
+async def sangmata_history(payload: SangMataHistoryRequest) -> dict[str, Any]:
+    """Query SangMata from the configured user account and return its reply snapshot."""
+    if not client_ready or client is None:
+        raise HTTPException(status_code=503, detail="Resolver is not configured or Telegram session is unavailable.")
+
+    try:
+        async with client_lock:
+            async with client.conversation(
+                "SangMata_BOT",
+                timeout=25,
+                exclusive=True,
+            ) as conversation:
+                # SangMata's private-chat command supports global history lookup by ID.
+                await conversation.send_message(f"allhistory {payload.user_id}")
+                first = await conversation.get_response()
+                messages = [first]
+
+                # SangMata may split a long history over multiple Telegram messages.
+                # Collect the remaining parts until the conversation is quiet.
+                for _ in range(7):
+                    try:
+                        extra = await conversation.get_response(timeout=1.5)
+                    except asyncio.TimeoutError:
+                        break
+                    messages.append(extra)
+
+        parsed = parse_sangmata_messages(messages)
+        if not parsed["raw_text"]:
+            raise HTTPException(status_code=502, detail="SangMata returned an empty response.")
+
+        return {
+            "ok": True,
+            "source": "SangMata_BOT",
+            "user_id": payload.user_id,
+            "fetched_at": int(__import__("time").time()),
+            "has_history": bool(parsed["names"] or parsed["usernames"]),
+            **parsed,
+        }
+    except HTTPException:
+        raise
+    except asyncio.TimeoutError as exc:
+        raise HTTPException(
+            status_code=504,
+            detail="SangMata did not respond in time. Confirm the account can open @SangMata_BOT and retry.",
+        ) from exc
+    except FloodWaitError as exc:
+        raise HTTPException(
+            status_code=429,
+            detail="Telegram rate limit reached. Retry later.",
+            headers={"Retry-After": str(max(1, int(exc.seconds)))},
+        ) from exc
+    except RPCError as exc:
+        logger.warning("SangMata Telegram RPC failed: %s", type(exc).__name__)
+        raise HTTPException(
+            status_code=502,
+            detail="Could not message @SangMata_BOT. Confirm the user account has started the bot and is not blocked.",
+        ) from exc
+    except Exception as exc:
+        logger.exception("SangMata lookup failed.")
+        raise HTTPException(status_code=502, detail="SangMata lookup failed temporarily.") from exc
