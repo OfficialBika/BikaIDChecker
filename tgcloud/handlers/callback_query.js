@@ -45,19 +45,19 @@ export default async function (query) {
         '<b>Fetched:</b> ' + esc(formatDate(snapshot.fetchedAt)),
         '',
         '<b>Names (' + names.length + ')</b>',
-        ...(names.length ? names.slice(0, 60).map((value, index) => (index + 1) + '. ' + esc(value)) : ['No names returned']),
+        ...(names.length ? names.slice(0, 15).map((value, index) => (index + 1) + '. ' + esc(String(value).slice(0, 100))) : ['No names returned']),
         '',
         '<b>Usernames (' + usernames.length + ')</b>',
-        ...(usernames.length ? usernames.slice(0, 60).map((value, index) => (index + 1) + '. ' + esc('@' + String(value).replace(/^@/, ''))) : ['No usernames returned']),
+        ...(usernames.length ? usernames.slice(0, 15).map((value, index) => (index + 1) + '. ' + esc('@' + String(value).replace(/^@/, '').slice(0, 100))) : ['No usernames returned']),
         '',
         '<b>Original SangMata response</b>',
-        '<pre>' + esc(String(snapshot.rawText).slice(0, 1500)) + '</pre>'
+        '<pre>' + esc(String(snapshot.rawText).slice(0, 700)) + '</pre>'
       ];
       const chatId = query.message?.chat?.id;
       if (chatId) {
         await api.sendMessage({
           chat_id: chatId,
-          text: lines.join('\n').slice(0, 3900),
+          text: lines.join('\n'),
           parse_mode: 'HTML',
           reply_to_message_id: query.message.message_id,
           allow_sending_without_reply: true
