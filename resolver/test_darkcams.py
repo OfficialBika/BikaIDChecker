@@ -63,7 +63,8 @@ def test_stats_waiter_polls_for_separate_stats_message(monkeypatch):
             return [stats]
 
     monkeypatch.setattr(app, "client", FakeClient())
-    monkeypatch.setattr(app.asyncio, "sleep", lambda _: asyncio.sleep(0))
+    original_sleep = asyncio.sleep
+    monkeypatch.setattr(app.asyncio, "sleep", lambda _: original_sleep(0))
     result = asyncio.run(app._wait_for_stats_message(
         object(), sent, log_context="test"
     ))
